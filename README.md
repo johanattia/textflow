@@ -1,4 +1,12 @@
 # textflow
-Text classification with [Metaflow](https://metaflow.org/) and [Amazon Web Services](https://aws.amazon.com/fr/). In this project, we consider two Metaflow steps for training :
-* Word embeddings pre-training with [Negative Sampling Skipgram](https://arxiv.org/pdf/1310.4546.pdf)
-* Text classification with [Hierarchical Attention Networks](https://www.cs.cmu.edu/~./hovy/papers/16HLT-hierarchical-attention-networks.pdf)
+Training pipelines in Natural Language Processing with [Metaflow](https://metaflow.org/) and [Amazon Web Services](https://aws.amazon.com/fr/).
+
+Learning tasks :
+* Word2vec pre-training :
+  * [Distributed Representations of Words and Phrases and their Compositionality](https://arxiv.org/pdf/1310.4546.pdf)
+* Text classification : 
+  * [Hierarchical Attention Networks for Document Classification](https://www.cs.cmu.edu/~./hovy/papers/16HLT-hierarchical-attention-networks.pdf)
+* Neural Machine Translation :
+  * [Neural Machine Translation by Jointly Learning to Align and Translate](https://arxiv.org/pdf/1409.0473.pdf)
+  * [Effective Approaches to Attention-based Neural Machine Translation](https://arxiv.org/pdf/1508.04025.pdf)
+  * [Attention Is All You Need](https://arxiv.org/pdf/1706.03762.pdf)
