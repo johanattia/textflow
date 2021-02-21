@@ -1,5 +1,0 @@
-{
-    "python.pythonPath": "/anaconda3/envs/tf_env/bin/python",
-    "python.linting.pylintEnabled": true,
-    "python.linting.enabled": true
-}

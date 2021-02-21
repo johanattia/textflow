@@ -50,6 +50,7 @@ class Skipgram(tf.keras.Model):
         self.context_embedding = tf.keras.layers.Embedding(
             self.vocab_size, self.dimension, name="context_embedding"
         )
+        self.dots = tf.keras.layers.Dot()
 
     def call(self, inputs: FloatTensorLike) -> FloatTensorLike:
         target_word, context_word = inputs
