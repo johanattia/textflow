@@ -3,8 +3,9 @@
 from typing import Optional
 from typeguard import typechecked
 
+import numpy as np
 import tensorflow as tf
-from tensorflow_addons.utils.types import FloatTensorLike, Number
+from tensorflow_addons.utils.types import FloatTensorLike, TensorLike, Number
 
 # TODO: call method, similarity, prepare_dataset, pretrained_weights, tokenizer, fit, get_config...
 
@@ -21,53 +22,81 @@ class Skipgram(tf.keras.Model):
     ```python
     import textflow
 
-    w2v = textflow.skipgram.Skipgram(dimension=300, vocab_size=12000)
-    dataset = w2v.prepare_dataset(documents)
-    w2v.compile(optimizer="adam")
+    dataset = textflow.skipgram.Skipgram.prepare_dataset(documents)
 
-    history = w2v.fit(dataset, epoch=10)
+    word2vec = textflow.skipgram.Skipgram(dimension=128, vocab_size=12000)
+    word2vec.compile(
+        optimizer="adam",
+        loss=tf.keras.losses.BinaryCrossentropy(from_logits=False)
+    )
+
+    history = word2vec.fit(dataset, epoch=20)
     ```
     """
 
     @typechecked
     def __init__(
         self,
-        vocab_size: Number,
-        embedding_dim: Number,
-        window_size: Number = 4,
-        negative_samples: Number = 1,
-        **kwargs
+        vocab_size: int,
+        dimension: int,
+        tokenizer: Optional[tf.keras.preprocessing.text.Tokenizer],  # ?
+        target_weights: Optional[TensorLike],
+        context_weights: Optional[TensorLike],
     ):
         """Skigpram class constructor.
 
-        Arguments:
+        Args:
             vocab_size: int.
                 Size of the vocabulary.
-            embedding_dim: int.
-                Dimension of trained word2vec Skipgram embeddings.
 
+            dimension: int.
+                Dimension of word2vec Skipgram embeddings.
+
+            tokenizer: tensorflow.keras Tokenizer.
+                Tokenizer.
+
+            target_weights: array-like.
+                Pretrained weights for skipgram embeddings initialization.
+
+            context_weights: array-like.
+                Pretrained weights for context embeddings initialization.
         """
-        # Inheritance
         super(Skipgram, self).__init__()
+        self.tokenizer = tokenizer
 
         # Skipgram parameters
         self.vocab_size = vocab_size
-        self.embedding_dim = embedding_dim
-        self.window_size = window_size
-        self.negative_samples = negative_samples
+        self.dimension = dimension
 
-        # Layers
+        # Skigram (target) Embedding Layer
+        if target_weights is not None:
+            target_initializer = tf.keras.initializers.Constant(target_weights)
+        else:
+            target_initializer = "uniform"
+
         self.target_embedding = tf.keras.layers.Embedding(
             self.vocab_size,
-            self.embedding_dim,
-            input_length=1,
-            name="w2v_embedding",
+            self.dimension,
+            embeddings_initializer=target_initializer,
+            trainable=True,
+            name="skipgram_vector",
         )
+
+        # Context Embedding Layer
+        if context_weights is not None:
+            target_initializer = tf.keras.initializers.Constant(target_weights)
+        else:
+            target_initializer = "uniform"
+
         self.context_embedding = tf.keras.layers.Embedding(
             self.vocab_size,
-            self.embedding_dim,
-            input_length=4 + 1,  # number of negative samples = 4
+            self.dimension,
+            embeddings_initializer=tf.keras.initializers.Constant(context_weights),
+            trainable=True,
+            name="context_vector",
         )
+
+        # Other layers
         self.dots = tf.keras.layers.Dot(axes=(3, 2))
         self.flatten = tf.keras.layers.Flatten()
 
@@ -95,7 +124,9 @@ class Skipgram(tf.keras.Model):
 
     def prepare_dataset(
         self,
-        sampling_table: Optional = None,
+        sampling_table: Optional[TensorLike],
+        window_size: int = 4,
+        negative_samples: int = 1,
         shuffle: bool = True,
         categorical: bool = False,
     ) -> tf.data.Dataset:
@@ -103,9 +134,9 @@ class Skipgram(tf.keras.Model):
 
     def get_config(self) -> dict:
         config = {
-            "embedding_dim": self.embedding_dim,
+            "dimension": self.dimension,
             "vocab_size": self.vocab_size,
-            "window_size": self.window_size,
-            "negative_samples": self.negative_samples,
+            "tokenizer": self.tokenizer.get_config(),
+            "weights": self.weights,
         }
         return config
