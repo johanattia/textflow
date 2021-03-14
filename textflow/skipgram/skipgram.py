@@ -1,6 +1,6 @@
 """Skipgram for TensorFlow."""
 
-from typing import Optional
+from typing import Optional, Union
 from typeguard import typechecked
 
 import numpy as np
@@ -13,8 +13,10 @@ from tensorflow_addons.utils.types import FloatTensorLike, TensorLike, Number
 class Skipgram(tf.keras.Model):
     """Negative Sampling Skipgram for TensorFlow.
 
-    References:
+    Main reference:
     * Distributed Representations of Words and Phrases and their Compositionality, https://arxiv.org/pdf/1310.4546.pdf
+
+    Other references:
     * Enriching Word Vectors with Subword Information, https://arxiv.org/pdf/1607.04606.pdf
     * Advances in Pre-Training Distributed Word Representations, https://arxiv.org/pdf/1712.09405.pdf
 
@@ -24,10 +26,10 @@ class Skipgram(tf.keras.Model):
 
     dataset = textflow.skipgram.Skipgram.prepare_dataset(documents)
 
-    word2vec = textflow.skipgram.Skipgram(dimension=128, vocab_size=12000)
+    word2vec = textflow.skipgram.Skipgram(vocab_size=12000, dimension=128)
     word2vec.compile(
         optimizer="adam",
-        loss=tf.keras.losses.BinaryCrossentropy(from_logits=False)
+        loss=tf.keras.losses.BinaryCrossentropy(from_logits=True)
     )
 
     history = word2vec.fit(dataset, epoch=20)
@@ -37,11 +39,11 @@ class Skipgram(tf.keras.Model):
     @typechecked
     def __init__(
         self,
-        vocab_size: int,
-        dimension: int,
-        tokenizer: Optional[tf.keras.preprocessing.text.Tokenizer],  # ?
-        target_weights: Optional[TensorLike],
-        context_weights: Optional[TensorLike],
+        vocab_size: Number,
+        dimension: Number,
+        tokenizer: Optional[tf.keras.preprocessing.text.Tokenizer] = None,
+        target_initializer: Union[str, tf.keras.initializers.Initializer] = "uniform",
+        context_initializer: Union[str, tf.keras.initializers.Initializer] = "uniform",
     ):
         """Skigpram class constructor.
 
@@ -55,46 +57,53 @@ class Skipgram(tf.keras.Model):
             tokenizer: tensorflow.keras Tokenizer.
                 Tokenizer.
 
-            target_weights: array-like.
-                Pretrained weights for skipgram embeddings initialization.
+            target_initializer: tf.keras.initializers.Initializer (str or instance).
+                Initializer for skipgram embedding layer.
 
-            context_weights: array-like.
-                Pretrained weights for context embeddings initialization.
+            context_initializer: tf.keras.initializers.Initializer (str or instance).
+                Initializer for context embedding layer.
         """
         super(Skipgram, self).__init__()
-        self.tokenizer = tokenizer
 
         # Skipgram parameters
         self.vocab_size = vocab_size
         self.dimension = dimension
 
-        # Skigram (target) Embedding Layer
-        if target_weights is not None:
-            target_initializer = tf.keras.initializers.Constant(target_weights)
+        # Tokenizer
+        if isinstance(tokenizer, tf.keras.preprocessing.text.Tokenizer):
+            self.tokenizer = tokenizer
         else:
-            target_initializer = "uniform"
+            raise TypeError(
+                "tokenizer must be a tf.keras.preprocessing.text.Tokenizer instance."
+            )
 
-        self.target_embedding = tf.keras.layers.Embedding(
-            self.vocab_size,
-            self.dimension,
-            embeddings_initializer=target_initializer,
-            trainable=True,
-            name="skipgram_vector",
-        )
+        # Skigram (target) Embedding Layer
+        if isinstance(target_initializer, (str, tf.keras.initializers.Initializer)):
+            self.target_embedding = tf.keras.layers.Embedding(
+                input_dim=self.vocab_size,
+                output_dim=self.dimension,
+                embeddings_initializer=target_initializer,
+                trainable=True,
+                name="target_vector",
+            )
+        else:
+            raise TypeError(
+                "target_initializer must be an initializer identifier (str) or a tf.keras.initializers.Initializer instance"
+            )
 
         # Context Embedding Layer
-        if context_weights is not None:
-            target_initializer = tf.keras.initializers.Constant(target_weights)
+        if isinstance(context_initializer, (str, tf.keras.initializers.Initializer)):
+            self.context_embedding = tf.keras.layers.Embedding(
+                input_dim=self.vocab_size,
+                output_dim=self.dimension,
+                embeddings_initializer=context_initializer,
+                trainable=True,
+                name="context_vector",
+            )
         else:
-            target_initializer = "uniform"
-
-        self.context_embedding = tf.keras.layers.Embedding(
-            self.vocab_size,
-            self.dimension,
-            embeddings_initializer=tf.keras.initializers.Constant(context_weights),
-            trainable=True,
-            name="context_vector",
-        )
+            raise TypeError(
+                "context_initializer must be an initializer identifier (str) or a tf.keras.initializers.Initializer instance"
+            )
 
         # Other layers
         self.dots = tf.keras.layers.Dot(axes=(3, 2))
