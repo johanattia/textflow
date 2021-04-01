@@ -28,7 +28,7 @@ class Skipgram(tf.keras.Model):
     dimension = 128
     word2vec_dataset, tokenizer = textflow.skipgram.Skipgram.prepare_dataset(texts)
 
-    word2vec = textflow.skipgram.Skipgram(dimension=dimension, tokenizer=tokenizer)
+    word2vec = textflow.embedding.Skipgram(dimension=dimension, tokenizer=tokenizer)
     word2vec.compile(
         optimizer="adam",
         loss=tf.keras.losses.BinaryCrossentropy(from_logits=True)
