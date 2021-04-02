@@ -1,19 +1,26 @@
 """Skipgram for TensorFlow."""
 
-from typing import Iterable, Optional, Tuple, Union
+from typing import Iterable, Tuple, Union  # Optional
 from typeguard import typechecked
 
+import annoy
 import numpy as np
-import tensorflow as tf
-from tensorflow_addons.utils.types import FloatTensorLike, TensorLike, Number
 
-# TODO: call method, word_similarity, sentence_similarity, prepare_dataset, document_vector, word_vector, tokenizer, get_config...
+import tensorflow as tf
+from tensorflow_addons.utils.types import TensorLike, Number  # FloatTensorLike
+
+
+# TODO:
+# word/sentence vector
+# Annoy index for word/sentence query
+# prepare_dataset
 
 
 class Skipgram(tf.keras.Model):
     """Negative Sampling Skipgram for TensorFlow.
 
-    Main reference:
+    Main references:
+    * Efficient Estimation of Word Representations in Vector Space, https://arxiv.org/pdf/1301.3781.pdf
     * Distributed Representations of Words and Phrases and their Compositionality, https://arxiv.org/pdf/1310.4546.pdf
 
     Other references:
@@ -26,7 +33,7 @@ class Skipgram(tf.keras.Model):
     import textflow
 
     dimension = 128
-    word2vec_dataset, tokenizer = textflow.skipgram.Skipgram.prepare_dataset(texts)
+    word2vec_dataset, tokenizer = textflow.embedding.Skipgram.prepare_dataset(texts)
 
     word2vec = textflow.embedding.Skipgram(dimension=dimension, tokenizer=tokenizer)
     word2vec.compile(
@@ -93,6 +100,9 @@ class Skipgram(tf.keras.Model):
             name="context_embedding",
         )
 
+        # Indexing for search
+        self.search_index_ = False
+
     def call(self, inputs: Tuple[TensorLike, TensorLike]) -> tf.Tensor:
         """Model forward method.
 
@@ -114,6 +124,34 @@ class Skipgram(tf.keras.Model):
         products = tf.squeeze(tf.matmul(context_vectors, target_vectors))
 
         return products  # tf.nn.softmax/sigmoid/sigmoid_cross_entropy_with_logits
+
+    def predict_step(self, data):
+        """Model inference step. Overrides and follows tf.keras.Model predict_step method:
+        https://github.com/tensorflow/tensorflow/blob/v2.4.1/tensorflow/python/keras/engine/training.py#L1412-L1434
+
+        Args:
+            inputs: pair of int tensors-like (center_word, context_words).
+                Context words contains both positive and negative examples.
+
+        Returns:
+            Dot products: tf.Tensor.
+                Dot products between center word and context words. These products are
+                logits for entropy loss function.
+        """
+
+        def _expand_single_1d_tensor(tensor):
+            if (
+                isinstance(tensor, tf.Tensor)
+                and isinstance(tensor.shape, tf.TensorShape)
+                and tensor.shape.rank == 1
+            ):
+                return tf.expand_dims(tensor, axis=-1)
+            return tensor
+
+        data = tf.nest.map_structure(_expand_single_1d_tensor, data)
+        x, _, _ = tf.keras.utils.unpack_x_y_sample_weight(data)
+
+        return self.skipgram_embedding(x)
 
     @staticmethod
     def prepare_dataset(
@@ -148,6 +186,24 @@ class Skipgram(tf.keras.Model):
                 TensorFlow/Keras tokenizer built from texts. NB: 0 and 1 are reserved indexes for
                 padding and unknown/oov token ('[UNK]') respectively.
         """
+        raise NotImplementedError
+
+    def word_vector(self):
+        raise NotImplementedError
+
+    def sentence_vector(self):
+        raise NotImplementedError
+
+    def word_similarity(self):
+        raise NotImplementedError
+
+    def sentence_similarity(self):
+        raise NotImplementedError
+
+    def create_index(self):
+        raise NotImplementedError
+
+    def query_index(self):
         raise NotImplementedError
 
     def get_config(self) -> dict:
