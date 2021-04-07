@@ -11,7 +11,7 @@ from tensorflow_addons.utils.types import TensorLike, Number  # FloatTensorLike
 
 
 # TODO:
-# word/sentence vector
+# tf.keras.layers.experimental.preprocessing.TextVectorization instead of tokenizer ?
 # Annoy index for word/sentence query
 # prepare_dataset
 
@@ -50,7 +50,7 @@ class Skipgram(tf.keras.Model):
         self,
         dimension: Number,
         tokenizer: tf.keras.preprocessing.text.Tokenizer,
-        target_initializer: Union[str, tf.keras.initializers.Initializer] = "uniform",
+        skipgram_initializer: Union[str, tf.keras.initializers.Initializer] = "uniform",
         context_initializer: Union[str, tf.keras.initializers.Initializer] = "uniform",
     ):
         """Skigpram class constructor.
@@ -64,7 +64,7 @@ class Skipgram(tf.keras.Model):
                 dataset used for training - in fit() method for instance - must be generated from this
                 tokenizer/text encoder.
 
-            target_initializer: tf.keras.initializers.Initializer (str or instance).
+            skipgram_initializer: tf.keras.initializers.Initializer (str or instance).
                 Initializer for skipgram embedding layer.
 
             context_initializer: tf.keras.initializers.Initializer (str or instance).
@@ -76,7 +76,7 @@ class Skipgram(tf.keras.Model):
         # Tokenizer
         if isinstance(tokenizer, tf.keras.preprocessing.text.Tokenizer):
             self.tokenizer = tokenizer
-            self.vocab_size = max(tokenizer.index_word) + 1
+            self.vocab_size = max(tokenizer.index_word) + 1  # for padding
         else:
             raise TypeError(
                 "tokenizer must be a tf.keras.preprocessing.text.Tokenizer instance."
@@ -86,7 +86,8 @@ class Skipgram(tf.keras.Model):
         self.skipgram_embedding = tf.keras.layers.Embedding(
             input_dim=self.vocab_size,
             output_dim=self.dimension,
-            embeddings_initializer=target_initializer,
+            embeddings_initializer=skipgram_initializer,
+            mask_zero=True,
             trainable=True,
             name="skipgram_embedding",
         )
@@ -96,6 +97,7 @@ class Skipgram(tf.keras.Model):
             input_dim=self.vocab_size,
             output_dim=self.dimension,
             embeddings_initializer=context_initializer,
+            mask_zero=True,
             trainable=True,
             name="context_embedding",
         )
@@ -103,7 +105,7 @@ class Skipgram(tf.keras.Model):
         # Indexing for search
         self.search_index_ = False
 
-    def call(self, inputs: Tuple[TensorLike, TensorLike]) -> tf.Tensor:
+    def call(self, inputs: Tuple[TensorLike]) -> tf.Tensor:
         """Model forward method.
 
         Args:
@@ -125,12 +127,12 @@ class Skipgram(tf.keras.Model):
 
         return products  # tf.nn.softmax/sigmoid/sigmoid_cross_entropy_with_logits
 
-    def predict_step(self, data):
+    def predict_step(self, data: Union[TensorLike, Iterable[TensorLike]]) -> tf.Tensor:
         """Model inference step. Overrides and follows tf.keras.Model predict_step method:
         https://github.com/tensorflow/tensorflow/blob/v2.4.1/tensorflow/python/keras/engine/training.py#L1412-L1434
 
         Args:
-            inputs: pair of int tensors-like (center_word, context_words).
+            data: tuple of int tensors-like (center_word, context_words).
                 Context words contains both positive and negative examples.
 
         Returns:
@@ -188,11 +190,39 @@ class Skipgram(tf.keras.Model):
         """
         raise NotImplementedError
 
-    def word_vector(self):
-        raise NotImplementedError
+    def word_vector(self, word: Iterable[str]) -> tf.Tensor:
+        """Getting word vector method.
 
-    def sentence_vector(self):
-        raise NotImplementedError
+        Args:
+            word: Iterable[str].
+                Word(s) for which vector(s)/embedding(s) is/are returned.
+
+        Returns:
+            tensor: tf.Tensor.
+                Skipgram embedding(s) of word.
+        """
+        index = tf.convert_to_tensor(
+            self.tokenizer.texts_to_sequences(word), dtype=tf.int32
+        )
+        word_vector = self.predict(index)
+        return word_vector
+
+    def sentence_vector(self, sentence: Iterable[str]) -> tf.Tensor:
+        """Getting sentence vector method through word vector averaging.
+
+        Args:
+            sentence: Iterable[str].
+                Sentence(s) for which vector(s)/embedding(s) is/are returned.
+
+        Returns:
+            tensor: tf.Tensor.
+                Average skipgram embedding(s) for each sentence.
+        """
+        indexes = tf.ragged.constant(
+            self.tokenizer.texts_to_sequences(sentence), dtype=tf.int32
+        )
+        sentence_vector = tf.reduce_mean(self.predict(indexes), axis=1)
+        return sentence_vector
 
     def word_similarity(self):
         raise NotImplementedError
