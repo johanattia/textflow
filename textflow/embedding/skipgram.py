@@ -1,18 +1,22 @@
 """Skipgram for TensorFlow."""
+import os
 
-from typing import Iterable, Tuple, Union  # Optional
+from typing import Optional, Iterable, Tuple, Union
+from tensorflow.python.types.core import Value
 from typeguard import typechecked
 
-import annoy
 import numpy as np
+from annoy import AnnoyIndex
 
 import tensorflow as tf
-from tensorflow_addons.utils.types import TensorLike, Number  # FloatTensorLike
+from tensorflow_addons.utils.types import TensorLike  # FloatTensorLike
+
+from tqdm.auto import tqdm
 
 
 # TODO:
-# tf.keras.layers.experimental.preprocessing.TextVectorization instead of tokenizer ?
 # Annoy index for word/sentence query
+# from_config/classmethod
 # prepare_dataset
 
 
@@ -48,7 +52,7 @@ class Skipgram(tf.keras.Model):
     @typechecked
     def __init__(
         self,
-        dimension: Number,
+        dimension: int,
         tokenizer: tf.keras.preprocessing.text.Tokenizer,
         skipgram_initializer: Union[str, tf.keras.initializers.Initializer] = "uniform",
         context_initializer: Union[str, tf.keras.initializers.Initializer] = "uniform",
@@ -76,7 +80,7 @@ class Skipgram(tf.keras.Model):
         # Tokenizer
         if isinstance(tokenizer, tf.keras.preprocessing.text.Tokenizer):
             self.tokenizer = tokenizer
-            self.vocab_size = max(tokenizer.index_word) + 1  # for padding
+            self.vocab_size = max(tokenizer.index_word) + 1  # + 1 for padding value 0
         else:
             raise TypeError(
                 "tokenizer must be a tf.keras.preprocessing.text.Tokenizer instance."
@@ -103,7 +107,7 @@ class Skipgram(tf.keras.Model):
         )
 
         # Indexing for search
-        self.search_index_ = False
+        self.search_index = False
 
     def call(self, inputs: Tuple[TensorLike]) -> tf.Tensor:
         """Model forward method.
@@ -190,7 +194,7 @@ class Skipgram(tf.keras.Model):
         """
         raise NotImplementedError
 
-    def word_vector(self, word: Iterable[str]) -> tf.Tensor:
+    def word_vector(self, word: Iterable[str], ignore_oov: bool = True) -> tf.Tensor:
         """Getting word vector method.
 
         Args:
@@ -204,11 +208,14 @@ class Skipgram(tf.keras.Model):
         index = tf.convert_to_tensor(
             self.tokenizer.texts_to_sequences(word), dtype=tf.int32
         )
-        word_vector = self.predict(index)
+        word_vector = tf.squeeze(self.predict(index), axis=1)
         return word_vector
 
-    def sentence_vector(self, sentence: Iterable[str]) -> tf.Tensor:
+    def sentence_vector(
+        self, sentence: Iterable[str], ignore_oov: bool = True
+    ) -> tf.Tensor:
         """Getting sentence vector method through word vector averaging.
+        Since some words may not be taken into account by the tokenizer,
 
         Args:
             sentence: Iterable[str].
@@ -216,7 +223,7 @@ class Skipgram(tf.keras.Model):
 
         Returns:
             tensor: tf.Tensor.
-                Average skipgram embedding(s) for each sentence.
+                Average skipgram embedding(s) for sentence.
         """
         indexes = tf.ragged.constant(
             self.tokenizer.texts_to_sequences(sentence), dtype=tf.int32
@@ -224,22 +231,113 @@ class Skipgram(tf.keras.Model):
         sentence_vector = tf.reduce_mean(self.predict(indexes), axis=1)
         return sentence_vector
 
-    def word_similarity(self):
-        raise NotImplementedError
+    def word_similarity(
+        self, word1: Iterable[str], word2: Iterable[str], ignore_oov: bool = True
+    ) -> tf.Tensor:
+        """Compute cosine similarity for respective pairs of words.
+        word1 and word2 arguments are iterable and must have the same length.
 
-    def sentence_similarity(self):
-        raise NotImplementedError
+        For instance, let's consider word1 = [w11, w12, ..., w1n] and word2 = [w21, w22, ..., w2n],
+        this method will compute [cosine_similarity(w11, w21), ..., cosine_similarity(w1n, w2n)].
 
-    def create_index(self):
-        raise NotImplementedError
+        Args:
+            word1: Iterable[str].
+                First words of word pairs.
+
+            word2: Iterable[str].
+                Second words of word pairs.
+
+        Returns:
+            tensor: tf.Tensor.
+                Cosine similarity tensor.
+        """
+        word_vector1 = self.word_vector(word1)
+        word_vector2 = self.word_vector(word2)
+
+        return -tf.keras.losses.cosine_similarity(word_vector1, word_vector2, axis=1)
+
+    def sentence_similarity(
+        self,
+        sentence1: Iterable[str],
+        sentence2: Iterable[str],
+        ignore_oov: bool = True,
+    ) -> tf.Tensor:
+        """Compute cosine similarity for respective pairs of sentences.
+        sentence1 and sentence2 arguments are iterable and must have the same length.
+
+        For instance, let's consider sentence1 = [s11, s12, ..., s1n] and sentence2 = [s21, s22, ..., s2n],
+        this method will compute [cosine_similarity(s11, s21), ..., cosine_similarity(s1n, s2n)].
+
+        Args:
+            sentence1: Iterable[str].
+                First sentences of sentence pairs.
+
+            sentence2: Iterable[str].
+                Second sentences of sentence pairs.
+
+        Returns:
+            tensor: tf.Tensor.
+                Cosine similarity tensor.
+        """
+        sentence_vector1 = self.sentence_vector(sentence1)
+        sentence_vector2 = self.sentence_vector(sentence2)
+
+        return -tf.keras.losses.cosine_similarity(
+            sentence_vector1, sentence_vector2, axis=1
+        )
+
+    def create_index(
+        self, metric: str = "angular", n_trees: int = 100, n_jobs: int = -1
+    ):
+        """Create Annoy index for approximate vector search.
+
+        Args:
+            metric: str.
+                Default to "angular". May also be "euclidean", "manhattan",
+                "hamming" or "dot".
+
+            n_trees: int.
+                Default to 100. Number of trees for the approximation forest.
+                More trees gives higher precision when querying.
+
+            n_jobs: int.
+                Default to -1. Specifies the number of threads used to build the trees.
+                n_jobs=-1 uses all available CPU cores.
+        """
+        search_index = AnnoyIndex(self.dimension, metric=metric)
+
+        for index in tqdm(
+            self.tokenizer.index_word, desc="Skipgram Embedding Indexing"
+        ):
+            embedding = self.skipgram_embedding(
+                tf.convert_to_tensor(index, dtype=tf.int32)
+            ).numpy()
+            search_index.add_item(index, embedding)
+
+        search_index.build(n_trees=n_trees, n_jobs=n_jobs)
+        self.search_index = search_index
 
     def query_index(self):
-        raise NotImplementedError
+        """Query previously created Annoy index."""
+        # if self.search_index:
+        return NotImplemented
+
+    def save_index(self, filename: str):
+        """Save previously created Annoy index."""
+        # if self.search_index:
+        return NotImplemented
 
     def get_config(self) -> dict:
+        """Get model config for serialization.
+
+        Returns:
+            config: dict.
+                Skipgram config with tokenizer config added.
+        """
+        tokenizer_config = self.tokenizer.get_config()
         config = {
             "dimension": self.dimension,
             "vocab_size": self.vocab_size,
-            "tokenizer": self.tokenizer.get_config(),
+            "tokenizer": tokenizer_config,
         }
         return config
