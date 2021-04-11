@@ -1,8 +1,6 @@
 """Skipgram for TensorFlow."""
-import os
 
-from typing import Optional, Iterable, Tuple, Union
-from tensorflow.python.types.core import Value
+from typing import Iterable, Tuple, Union  # Optional
 from typeguard import typechecked
 
 import numpy as np
@@ -17,7 +15,45 @@ from tqdm.auto import tqdm
 # TODO:
 # Annoy index for word/sentence query
 # from_config/classmethod
-# prepare_dataset
+# make_skipgram_dataset
+
+
+class VocabularyError(LookupError):
+    pass
+
+
+def make_skipgram_dataset(
+    texts: Iterable[str],
+    window_size: int = 4,
+    negative_samples: int = 1,
+    buffer_size: int = None,
+) -> Tuple[tf.data.Dataset, tf.keras.preprocessing.text.Tokenizer]:
+    """Build skipgram dataset and tokenizer from texts. A skipgram dataset is composed
+    of skipgram pairs (center_word, context_words). Note that context_words may
+    contain both positive and negative examples.
+
+    Args:
+        texts: Iterable[str].
+            A corpus of texts.
+
+        window_size: int, default to 4.
+        Sliding window for skipgram dataset building.
+
+        negative_samples: int, default to 1.
+            Number of negative samples to generate for each target_word.
+
+        buffer_size: int, default to None.
+            Buffer size for tf.data.Dataset shuffling.
+
+    Returns:
+        dataset: tf.data.Dataset.
+            Word2vec Skipgram dataset composed pairs (center_word, context_words).
+
+        tokenizer: tf.keras.preprocessing.text.Tokenizer.
+            TensorFlow/Keras tokenizer built from texts. NB: 0 and 1 are reserved indexes for
+            padding and unknown/oov token ('[UNK]') respectively.
+    """
+    raise NotImplementedError
 
 
 class Skipgram(tf.keras.Model):
@@ -68,10 +104,10 @@ class Skipgram(tf.keras.Model):
                 dataset used for training - in fit() method for instance - must be generated from this
                 tokenizer/text encoder.
 
-            skipgram_initializer: tf.keras.initializers.Initializer (str or instance).
+            skipgram_initializer: tf.keras.initializers.Initializer (str or instance), default to `uniform`.
                 Initializer for skipgram embedding layer.
 
-            context_initializer: tf.keras.initializers.Initializer (str or instance).
+            context_initializer: tf.keras.initializers.Initializer (str or instance), default to `uniform`.
                 Initializer for context embedding layer.
         """
         super(Skipgram, self).__init__()
@@ -159,57 +195,35 @@ class Skipgram(tf.keras.Model):
 
         return self.skipgram_embedding(x)
 
-    @staticmethod
-    def prepare_dataset(
-        texts: Iterable[str],
-        window_size: int = 4,
-        negative_samples: int = 1,
-        buffer: int = 1000,
-        shuffle: bool = True,
-    ) -> Tuple[tf.data.Dataset, tf.keras.preprocessing.text.Tokenizer]:
-        """Build skipgram dataset and tokenizer from texts. A skipgram dataset is composed
-        of skipgram pairs (center_word, context_words). Note that context_words may
-        contain both positive and negative examples.
-
-        Args:
-            texts: Iterable[str].
-                A corpus of texts.
-
-            window_size: int.
-                Default to 4. Sliding window for skipgram dataset building.
-
-            negative_samples: int.
-                Default to 1. Number of negative samples to generate for each target_word.
-
-            suffle: bool.
-                Default to True. Whether suffle the output word2vec tf.data.Dataset.
-
-        Returns:
-            dataset: tf.data.Dataset.
-                Word2vec Skipgram dataset composed pairs (center_word, context_words).
-
-            tokenizer: tf.keras.preprocessing.text.Tokenizer.
-                TensorFlow/Keras tokenizer built from texts. NB: 0 and 1 are reserved indexes for
-                padding and unknown/oov token ('[UNK]') respectively.
-        """
-        raise NotImplementedError
-
-    def word_vector(self, word: Iterable[str], ignore_oov: bool = True) -> tf.Tensor:
+    def word_vector(self, words: Iterable[str]) -> tf.Tensor:
         """Getting word vector method.
 
         Args:
-            word: Iterable[str].
-                Word(s) for which vector(s)/embedding(s) is/are returned.
+            words: Iterable[str].
+                Words for which vectors/embeddings are returned.
 
         Returns:
             tensor: tf.Tensor.
-                Skipgram embedding(s) of word.
+                Skipgram embeddings of words.
+
+        Raises:
+            VocabularyError.
+                If word is out-of-vocabulary.
         """
-        index = tf.convert_to_tensor(
-            self.tokenizer.texts_to_sequences(word), dtype=tf.int32
+        indexes = tf.convert_to_tensor(
+            self.tokenizer.texts_to_sequences(words), dtype=tf.int32
         )
-        word_vector = tf.squeeze(self.predict(index), axis=1)
-        return word_vector
+        oov_mask = tf.equal(indexes, tf.ones(indexes.shape, dtype=tf.int32))
+
+        if tf.reduce_any(oov_mask):
+            oov_words = (
+                tf.boolean_mask(tf.expand_dims(tf.constant(words), axis=-1), oov_mask)
+                .numpy()
+                .tolist()
+            )
+            raise VocabularyError(f"{oov_words} not in Skipgram vocabulary.")
+
+        return tf.squeeze(self.predict(indexes), axis=1)
 
     def sentence_vector(
         self, sentence: Iterable[str], ignore_oov: bool = True
@@ -292,16 +306,15 @@ class Skipgram(tf.keras.Model):
         """Create Annoy index for approximate vector search.
 
         Args:
-            metric: str.
-                Default to "angular". May also be "euclidean", "manhattan",
-                "hamming" or "dot".
+            metric: str, default to `angular`.
+                May also be `euclidean`, `manhattan`, `hamming` or `dot`.
 
-            n_trees: int.
-                Default to 100. Number of trees for the approximation forest.
-                More trees gives higher precision when querying.
+            n_trees: int, default to 100.
+                Number of trees for the approximation forest. More trees gives
+                higher precision when querying.
 
-            n_jobs: int.
-                Default to -1. Specifies the number of threads used to build the trees.
+            n_jobs: int, default to -1.
+                Specifies the number of threads used to build the trees.
                 n_jobs=-1 uses all available CPU cores.
         """
         search_index = AnnoyIndex(self.dimension, metric=metric)
