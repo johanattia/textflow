@@ -281,8 +281,8 @@ class Skipgram(tf.keras.Model):
             tensor: tf.Tensor.
                 Cosine similarity tensor.
         """
-        word_vectors1 = self.word_vector(words1)
-        word_vectors2 = self.word_vector(words2)
+        word_vectors1 = self.word_vectors(words1)
+        word_vectors2 = self.word_vectors(words2)
 
         return -tf.keras.losses.cosine_similarity(word_vectors1, word_vectors2, axis=1)
 
