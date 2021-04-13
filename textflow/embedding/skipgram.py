@@ -13,6 +13,7 @@ from tqdm.auto import tqdm
 
 
 # TODO:
+# method call : review squeeze & expand_dims axis
 # Annoy index for word/sentence query
 # from_config/classmethod
 # make_skipgram_dataset
@@ -317,7 +318,11 @@ class Skipgram(tf.keras.Model):
         )
 
     def create_index(
-        self, metric: str = "angular", n_trees: int = 100, n_jobs: int = -1
+        self,
+        metric: str = "angular",
+        n_trees: int = 100,
+        n_jobs: int = -1,
+        overwrite_index: bool = False,
     ):
         """Create Annoy index for approximate vector search.
 
@@ -332,11 +337,13 @@ class Skipgram(tf.keras.Model):
             n_jobs: int, default to -1.
                 Specifies the number of threads used to build the trees.
                 n_jobs=-1 uses all available CPU cores.
+
+            overwrite_index: bool, default to False.
+                Overwrite an existing (previously built) search index with a new one. Useful if skipgram
+                embeddings were re-trained or fine-tuned.
         """
-        if self.search_index:
-            raise AttributeError(
-                "Already existed search index for approximate vector search."
-            )
+        if self.search_index and not overwrite_index:
+            raise AttributeError("Already existing `search_index` attribute.")
 
         search_index = AnnoyIndex(self.dimension, metric=metric)
 
