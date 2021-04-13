@@ -4,7 +4,7 @@ Training pipelines in Natural Language Processing with [TensorFlow](https://www.
 
 ## Models
 Word/Sentence Representation :
-  * [ ] [Distributed Representations of Words and Phrases and their Compositionality](https://arxiv.org/pdf/1310.4546.pdf)
+  * [x] [Distributed Representations of Words and Phrases and their Compositionality](https://arxiv.org/pdf/1310.4546.pdf)
   * [ ] [Supervised Learning of Universal Sentence Representations from Natural Language Inference Data](https://arxiv.org/pdf/1705.02364.pdf)
   * [ ] [A Structured Self-Attentive Sentence Embedding](https://arxiv.org/pdf/1703.03130.pdf)
   
