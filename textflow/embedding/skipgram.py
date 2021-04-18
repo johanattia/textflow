@@ -347,8 +347,7 @@ class Skipgram(tf.keras.Model):
         """Get model config for serialization.
 
         Returns:
-            config: dict.
-                Skipgram config with tokenizer config added.
+            config (dict): Skipgram config with tokenizer config added.
         """
         tokenizer_config = self.tokenizer.get_config()
         config = {
