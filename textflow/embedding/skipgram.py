@@ -34,25 +34,19 @@ def make_skipgram_dataset(
     contain both positive and negative examples.
 
     Args:
-        texts: Iterable[str].
-            A corpus of texts.
-
-        window_size: int, default to 4.
-            Sliding window for skipgram dataset building.
-
-        negative_samples: Optional[int], default to 1.
-            Number of negative samples to generate for each target_word.
-
-        buffer_size: Optional[int], default to None.
-            Buffer size for tf.data.Dataset shuffling.
+        texts (Iterable[str]): A corpus of texts.
+        window_size (int, optional): Sliding window for skipgram dataset building. Defaults to 4.
+        negative_samples (int, optional): Number of negative samples to generate for each
+            target_word. Defaults to 2.
+        buffer_size (int, optional): Buffer size for tf.data.Dataset shuffling. Defaults
+            to None.
 
     Returns:
-        dataset: tf.data.Dataset.
-            Word2vec Skipgram dataset composed pairs (center_word, context_words).
-
-        tokenizer: tf.keras.preprocessing.text.Tokenizer.
-            TensorFlow/Keras tokenizer built from texts. NB: 0 and 1 are reserved indexes for
-            padding and unknown/oov token ('[UNK]') respectively.
+        dataset (tf.data.Dataset): Word2vec Skipgram dataset composed pairs
+            (center_word, context_words).
+        tokenizer (tf.keras.preprocessing.text.Tokenizer): TensorFlow/Keras tokenizer built
+            from texts. NB: 0 and 1 are reserved indexes for padding and unknown/oov token
+            ('[UNK]') respectively.
     """
     raise NotImplementedError
 
@@ -96,19 +90,17 @@ class Skipgram(tf.keras.Model):
         """Skigpram class constructor.
 
         Args:
-            dimension: int.
-                Dimension of word2vec Skipgram embeddings.
+            dimension (int): Dimension of word2vec Skipgram embeddings.
+            tokenizer (tf.keras.preprocessing.text.Tokenizer): TensorFlow/Keras tokenizer
+                built from a corpus of texts. Note that each skipgram dataset used for training - in fit()
+                method for instance - must be generated from this tokenizer/text encoder.
+            skipgram_initializer (Union[str, tf.keras.initializers.Initializer], optional): Initializer for
+                skipgram embedding layer. Defaults to "uniform".
+            context_initializer (Union[str, tf.keras.initializers.Initializer], optional): Initializer for
+                context embedding layer. Defaults to "uniform".
 
-            tokenizer: tf.keras.preprocessing.text.Tokenizer.
-                TensorFlow/Keras tokenizer built from a corpus of texts. Note that each skipgram
-                dataset used for training - in fit() method for instance - must be generated from this
-                tokenizer/text encoder.
-
-            skipgram_initializer: tf.keras.initializers.Initializer (str or instance), default to `uniform`.
-                Initializer for skipgram embedding layer.
-
-            context_initializer: tf.keras.initializers.Initializer (str or instance), default to `uniform`.
-                Initializer for context embedding layer.
+        Raises:
+            TypeError: if tokenizer argument isn't a tf.keras.preprocessing.text.Tokenizer instance.
         """
         super(Skipgram, self).__init__()
         self.dimension = dimension
@@ -142,19 +134,15 @@ class Skipgram(tf.keras.Model):
             name="context_embedding",
         )
 
-        # Indexing for search
-        self.search_index = False
-
     def call(self, inputs: Tuple[TensorLike]) -> tf.Tensor:
         """Model forward method.
 
         Args:
-            inputs: tuple of index tensors (center_word, context_words).
-                Context words contains both positive and negative examples.
+            inputs (Tuple[TensorLike]): tuple of index tensors (center_word, context_words).
+                Context words contains both positive and negative samples.
 
         Returns:
-            Dot products: tf.Tensor.
-                Dot products between center word and context words. These products are
+            tf.Tensor: Dot products between center word and context words. These products are
                 logits for entropy loss function.
         """
         target, context = inputs
@@ -167,18 +155,17 @@ class Skipgram(tf.keras.Model):
 
         return products  # tf.nn.softmax/sigmoid/sigmoid_cross_entropy_with_logits
 
-    def predict_step(self, data: Union[TensorLike, Tuple[TensorLike]]) -> tf.Tensor:
+    def predict_step(self, data: Union[TensorLike, Iterable[TensorLike]]) -> tf.Tensor:
         """Model inference step. Overrides and follows tf.keras.Model predict_step method:
         https://github.com/tensorflow/tensorflow/blob/v2.4.1/tensorflow/python/keras/engine/training.py#L1412-L1434
 
         Args:
-            data: tuple of tensors (center_word, context_words, weights) or just (center) word index tensor.
-                Context words contains both positive and negative examples.
+            data (Union[TensorLike, Iterable[TensorLike]]): iterable of tensors
+                (center_word, context_words, weights) or just (center) word indexes tensor. Context words
+                may contain both positive and negative examples.
 
         Returns:
-            Dot products: tf.Tensor.
-                Dot products between center word and context words. These products are
-                logits for entropy loss function.
+            tf.Tensor: skipgram embeddings of (center) word indexes in `data`.
         """
 
         def _expand_single_1d_tensor(tensor):
@@ -199,16 +186,13 @@ class Skipgram(tf.keras.Model):
         """Getting word vector method.
 
         Args:
-            words: Iterable[str].
-                Words for which vectors/embeddings are returned.
-
-        Returns:
-            tensor: tf.Tensor.
-                Skipgram embeddings of words.
+            words (Iterable[str]): Words for which vectors/embeddings are returned.
 
         Raises:
-            VocabularyError.
-                If one or several word from words argument are out-of-vocabulary.
+            VocabularyError: If one or several word from words argument are out-of-vocabulary.
+
+        Returns:
+            tf.Tensor: Skipgram embeddings of words.
         """
         indexes = tf.convert_to_tensor(
             self.tokenizer.texts_to_sequences(words), dtype=tf.int32
@@ -231,20 +215,17 @@ class Skipgram(tf.keras.Model):
         """Getting sentence vector method through word vector averaging.
 
         Args:
-            sentences: Iterable[str].
-                Sentences for which vectors/embeddings are returned.
-
-            ignore_oov: bool, default to True.
-                Consider a sentence of n tokens composed of n_i in-vocabulary tokens and
+            sentences (Iterable[str]): Sentences for which vectors/embeddings are returned.
+            ignore_oov (bool, optional): Consider a sentence of n tokens composed of n_i in-vocabulary tokens and
                 n_o oov tokens (n_i + n_o = n), two cases proposed:
-                - ignore_oov=True : word vector averaging will be made by suming the n_i in-vocabulary
-                word vectors and dividing by n.
-                - ignore_oov=False : word vector averaging will be made by replacing the n_o oov word
-                vectors by a special oov vector.
+                    - ignore_oov=True : word vector averaging will be made by suming the n_i in-vocabulary
+                    word vectors and dividing by n.
+                    - ignore_oov=False : word vector averaging will be made by replacing the n_o oov word
+                    vectors by a special oov vector.
+                Defaults to True.
 
         Returns:
-            tensor: tf.Tensor.
-                Average skipgram embedding(s) for sentence.
+            tf.Tensor: Average skipgram embedding(s) for sentence.
         """
         indexes = tf.ragged.constant(
             self.tokenizer.texts_to_sequences(sentences), dtype=tf.int32
@@ -272,15 +253,11 @@ class Skipgram(tf.keras.Model):
         this method will compute [cosine_similarity(w11, w21), ..., cosine_similarity(w1n, w2n)].
 
         Args:
-            word1: Iterable[str].
-                First words of word pairs.
-
-            word2: Iterable[str].
-                Second words of word pairs.
+            words1 (Iterable[str]): First words of word pairs.
+            words2 (Iterable[str]): Second words of word pairs.
 
         Returns:
-            tensor: tf.Tensor.
-                Cosine similarity tensor.
+            tf.Tensor: Cosine similarity tensor.
         """
         word_vectors1 = self.word_vectors(words1)
         word_vectors2 = self.word_vectors(words2)
@@ -300,15 +277,13 @@ class Skipgram(tf.keras.Model):
         this method will compute [cosine_similarity(s11, s21), ..., cosine_similarity(s1n, s2n)].
 
         Args:
-            sentences1: Iterable[str].
-                First sentences of sentence pairs.
-
-            sentences2: Iterable[str].
-                Second sentences of sentence pairs.
+            sentences1 (Iterable[str]): First sentences of sentence pairs.
+            sentences2 (Iterable[str]): Second sentences of sentence pairs.
+            ignore_oov (bool, optional): Whether oov words are ignored to compute sentence vectors,
+                c.f. `sentence_vectors` method documentation for more details. Defaults to True.
 
         Returns:
-            tensor: tf.Tensor.
-                Cosine similarity tensor.
+            tf.Tensor: Cosine similarity tensor.
         """
         sentence_vectors1 = self.sentence_vectors(sentences1, ignore_oov=ignore_oov)
         sentence_vectors2 = self.sentence_vectors(sentences2, ignore_oov=ignore_oov)
@@ -327,23 +302,25 @@ class Skipgram(tf.keras.Model):
         """Create Annoy index for approximate vector search.
 
         Args:
-            metric: str, default to `angular`.
-                May also be `euclidean`, `manhattan`, `hamming` or `dot`.
+            metric (str, optional): Metric/distance used to compare vectors. May also be `euclidean`,
+                `manhattan`, `hamming` or `dot`. Defaults to "angular".
+            n_trees (int, optional): Number of trees for the approximation forest. More trees gives
+                higher precision when querying. Defaults to 100.
+            n_jobs (int, optional): Specifies the number of threads used to build the trees.
+                `n_jobs=-1` uses all available CPU cores. Defaults to -1.
+            overwrite_index (bool, optional): Overwrite an existing (previously built) search index
+                with a new one. Useful if skipgram embeddings were re-trained or fine-tuned.
 
-            n_trees: int, default to 100.
-                Number of trees for the approximation forest. More trees gives
-                higher precision when querying.
-
-            n_jobs: int, default to -1.
-                Specifies the number of threads used to build the trees.
-                n_jobs=-1 uses all available CPU cores.
-
-            overwrite_index: bool, default to False.
-                Overwrite an existing (previously built) search index with a new one. Useful if skipgram
-                embeddings were re-trained or fine-tuned.
+        Raises:
+            AttributeError: if a search index (attribute) is already existing and `overwrite`
+                argument is `False`.
         """
-        if self.search_index and not overwrite_index:
-            raise AttributeError("Already existing `search_index` attribute.")
+        if hasattr(self, "search_index") and not overwrite_index:
+            raise AttributeError(
+                """Already existing `search_index` attribute. If you want to overwrite it with a new index, 
+                `overwrite` argument must be `True`.
+                """
+            )
 
         search_index = AnnoyIndex(self.dimension, metric=metric)
 
@@ -360,13 +337,11 @@ class Skipgram(tf.keras.Model):
 
     def query_index(self):
         """Query previously created Annoy index."""
-        # if self.search_index:
-        return NotImplemented
+        raise NotImplementedError
 
     def save_index(self, filename: str):
         """Save previously created Annoy index."""
-        # if self.search_index:
-        return NotImplemented
+        raise NotImplementedError
 
     def get_config(self) -> dict:
         """Get model config for serialization.
