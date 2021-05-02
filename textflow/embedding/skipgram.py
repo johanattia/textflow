@@ -1,54 +1,27 @@
 """Skipgram for TensorFlow."""
 
-from typing import Iterable, Optional, Tuple, Union
+from typing import Iterable, List, Optional, Tuple, Union
 from typeguard import typechecked
 
-import numpy as np
+
+from tqdm.auto import tqdm
 from annoy import AnnoyIndex
 
+
+import numpy as np
 import tensorflow as tf
 from tensorflow_addons.utils.types import TensorLike
 
-from tqdm.auto import tqdm
+
+from .skipgram_utils import VocabularyError
 
 
-# TODO:
-# method call : review squeeze & expand_dims axis
-# Annoy index for word/sentence query
-# from_config/classmethod
-# make_skipgram_dataset
+logger = tf.get_logger()
+logger.setLevel("INFO")
 
 
-class VocabularyError(LookupError):
-    pass
-
-
-def make_skipgram_dataset(
-    texts: Iterable[str],
-    window_size: int = 4,
-    negative_samples: Optional[int] = 2,
-    buffer_size: Optional[int] = None,
-) -> Tuple[tf.data.Dataset, tf.keras.preprocessing.text.Tokenizer]:
-    """Build skipgram dataset and tokenizer from texts. A skipgram dataset is composed
-    of skipgram pairs (center_word, context_words). Note that context_words may
-    contain both positive and negative examples.
-
-    Args:
-        texts (Iterable[str]): A corpus of texts.
-        window_size (int, optional): Sliding window for skipgram dataset building. Defaults to 4.
-        negative_samples (int, optional): Number of negative samples to generate for each
-            target_word. Defaults to 2.
-        buffer_size (int, optional): Buffer size for tf.data.Dataset shuffling. Defaults
-            to None.
-
-    Returns:
-        dataset (tf.data.Dataset): Word2vec Skipgram dataset composed pairs
-            (center_word, context_words).
-        tokenizer (tf.keras.preprocessing.text.Tokenizer): TensorFlow/Keras tokenizer built
-            from texts. NB: 0 and 1 are reserved indexes for padding and unknown/oov token
-            ('[UNK]') respectively.
-    """
-    raise NotImplementedError
+def AutoSkipgram(filepath):
+    return tf.keras.models.load_model(filepath, custom_objects={"Skipgram": Skipgram})
 
 
 class Skipgram(tf.keras.Model):
@@ -84,8 +57,6 @@ class Skipgram(tf.keras.Model):
         self,
         dimension: int,
         tokenizer: tf.keras.preprocessing.text.Tokenizer,
-        skipgram_initializer: Union[str, tf.keras.initializers.Initializer] = "uniform",
-        context_initializer: Union[str, tf.keras.initializers.Initializer] = "uniform",
     ):
         """Skigpram class constructor.
 
@@ -94,10 +65,6 @@ class Skipgram(tf.keras.Model):
             tokenizer (tf.keras.preprocessing.text.Tokenizer): TensorFlow/Keras tokenizer
                 built from a corpus of texts. Note that each skipgram dataset used for training - in fit()
                 method for instance - must be generated from this tokenizer/text encoder.
-            skipgram_initializer (Union[str, tf.keras.initializers.Initializer], optional): Initializer for
-                skipgram embedding layer. Defaults to "uniform".
-            context_initializer (Union[str, tf.keras.initializers.Initializer], optional): Initializer for
-                context embedding layer. Defaults to "uniform".
 
         Raises:
             TypeError: if tokenizer argument isn't a tf.keras.preprocessing.text.Tokenizer instance.
@@ -118,7 +85,6 @@ class Skipgram(tf.keras.Model):
         self.skipgram_embedding = tf.keras.layers.Embedding(
             input_dim=self.vocab_size,
             output_dim=self.dimension,
-            embeddings_initializer=skipgram_initializer,
             mask_zero=True,
             trainable=True,
             name="skipgram_embedding",
@@ -128,7 +94,6 @@ class Skipgram(tf.keras.Model):
         self.context_embedding = tf.keras.layers.Embedding(
             input_dim=self.vocab_size,
             output_dim=self.dimension,
-            embeddings_initializer=context_initializer,
             mask_zero=True,
             trainable=True,
             name="context_embedding",
@@ -145,12 +110,12 @@ class Skipgram(tf.keras.Model):
             tf.Tensor: Dot products between center word and context words. These products are
                 logits for entropy loss function.
         """
-        target, context = inputs
+        target, context = inputs  # shape: (batch_size,), (batch_size, context_size)
 
         target_vectors = self.skipgram_embedding(target)
         context_vectors = self.context_embedding(context)
 
-        target_vectors = tf.expand_dims(target_vectors, axis=2)
+        target_vectors = tf.expand_dims(target_vectors, axis=-1)
         products = tf.squeeze(tf.matmul(context_vectors, target_vectors))
 
         return products  # tf.nn.softmax/sigmoid/sigmoid_cross_entropy_with_logits
@@ -216,11 +181,11 @@ class Skipgram(tf.keras.Model):
 
         Args:
             sentences (Iterable[str]): Sentences for which vectors/embeddings are returned.
-            ignore_oov (bool, optional): Consider a sentence of n tokens composed of n_i in-vocabulary tokens and
-                n_o oov tokens (n_i + n_o = n), two cases proposed:
-                    - ignore_oov=True : word vector averaging will be made by suming the n_i in-vocabulary
+            ignore_oov (bool, optional): Consider a sentence of n tokens composed of n_i in-vocabulary
+                tokens and n_o oov tokens (n_i + n_o = n), two cases proposed:
+                    * ignore_oov=True : word vector averaging will be made by suming the n_i in-vocabulary
                     word vectors and dividing by n.
-                    - ignore_oov=False : word vector averaging will be made by replacing the n_o oov word
+                    * ignore_oov=False : word vector averaging will be made by replacing the n_o oov word
                     vectors by a special oov vector.
                 Defaults to True.
 
@@ -292,24 +257,28 @@ class Skipgram(tf.keras.Model):
             sentence_vectors1, sentence_vectors2, axis=1
         )
 
-    def create_index(
+    def create_search_index(
         self,
         metric: str = "angular",
         n_trees: int = 100,
         n_jobs: int = -1,
         overwrite_index: bool = False,
+        index_filename: Optional[str] = None,
     ):
         """Create Annoy index for approximate vector search.
 
         Args:
-            metric (str, optional): Metric/distance used to compare vectors. May also be `euclidean`,
-                `manhattan`, `hamming` or `dot`. Defaults to "angular".
-            n_trees (int, optional): Number of trees for the approximation forest. More trees gives
-                higher precision when querying. Defaults to 100.
+            metric (str, optional): Metric/distance used to compare vectors. May also be
+                `euclidean`, `manhattan`, `hamming` or `dot`. Defaults to "angular".
+            n_trees (int, optional): Number of trees for the approximation forest. More trees
+                gives higher precision when querying. Defaults to 100.
             n_jobs (int, optional): Specifies the number of threads used to build the trees.
                 `n_jobs=-1` uses all available CPU cores. Defaults to -1.
-            overwrite_index (bool, optional): Overwrite an existing (previously built) search index
-                with a new one. Useful if skipgram embeddings were re-trained or fine-tuned.
+            overwrite_index (bool, optional): Overwrite an existing (previously built) search
+                index with a new one. Useful if skipgram embeddings were re-trained or
+                fine-tuned.
+            index_filename (str, optional): filename to save the Annoy index. Search index is
+                saved only if `index_filename` is given. Defaults to None.
 
         Raises:
             AttributeError: if a search index (attribute) is already existing and `overwrite`
@@ -317,12 +286,13 @@ class Skipgram(tf.keras.Model):
         """
         if hasattr(self, "search_index") and not overwrite_index:
             raise AttributeError(
-                """Already existing `search_index` attribute. If you want to overwrite it with a new index, 
-                `overwrite` argument must be `True`.
+                """Already existing `search_index` attribute. If you want to overwrite it with 
+                a new index, `overwrite_index` argument must be `True`.
                 """
             )
 
         search_index = AnnoyIndex(self.dimension, metric=metric)
+        logger.info("Search index instantiated. Start indexing.")
 
         for index in tqdm(
             self.tokenizer.index_word, desc="Skipgram Embedding Indexing"
@@ -333,15 +303,50 @@ class Skipgram(tf.keras.Model):
             search_index.add_item(index, embedding)
 
         search_index.build(n_trees=n_trees, n_jobs=n_jobs)
+        logger.info("Search index built.")
+
+        if index_filename:
+            search_index.save(index_filename)
+            logger.info(f"Search index saved to {index_filename}.")
+
         self.search_index = search_index
 
-    def query_index(self):
-        """Query previously created Annoy index."""
-        raise NotImplementedError
+    def query_search_index(
+        self, query: Union[str, TensorLike], topn: int = 10
+    ) -> List[Tuple[str, float]]:
+        """Query (previously created) Annoy index. Query argument can be either
+        a word (string) or a vector.
 
-    def save_index(self, filename: str):
-        """Save previously created Annoy index."""
-        raise NotImplementedError
+        Args:
+            query (Union[str, TensorLike]): [description]
+            topn (int, optional): [description]. Defaults to 10.
+
+        Raises:
+            AttributeError: [description]
+
+        Returns:
+            List[Tuple[str, float]]: [description]
+        """
+        if not hasattr(self, "search_index"):
+            raise AttributeError(
+                """An existing `search_index` is required to use this method. Missing here.
+                To build a such vector search index, use `create_search_index` method.
+                """
+            )
+
+        try:
+            i = self.tokenizer.word_index[query]
+            return list(
+                zip(
+                    self.search_index.get_nns_by_item(
+                        i, topn, search_k=-1, include_distances=True
+                    )
+                )
+            )
+        except KeyError:
+            logger.error(
+                f"{query} is an oov word. Impossible to perform vector search on oov word."
+            )
 
     def get_config(self) -> dict:
         """Get model config for serialization.
@@ -349,10 +354,25 @@ class Skipgram(tf.keras.Model):
         Returns:
             config (dict): Skipgram config with tokenizer config added.
         """
-        tokenizer_config = self.tokenizer.get_config()
+        # tokenizer_config = self.tokenizer.get_config()
+        tokenizer_json = self.tokenizer.to_json()
         config = {
             "dimension": self.dimension,
-            "vocab_size": self.vocab_size,
-            "tokenizer": tokenizer_config,
+            "tokenizer": tokenizer_json,
         }
         return config
+
+    @classmethod
+    def from_config(cls, config: dict):
+        """[summary]
+
+        Args:
+            config (dict): [description]
+
+        Returns:
+            [type]: [description]
+        """
+        config["tokenizer"] = tf.keras.preprocessing.text.tokenizer_from_json(
+            config["tokenizer"]
+        )
+        return cls(**config)
