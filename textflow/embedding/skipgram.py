@@ -1,5 +1,6 @@
 """Skipgram for TensorFlow."""
 
+import os
 from typing import Iterable, List, Optional, Tuple, Union
 from typeguard import typechecked
 
@@ -20,8 +21,8 @@ logger = tf.get_logger()
 logger.setLevel("INFO")
 
 
-def AutoSkipgram(filepath):
-    return tf.keras.models.load_model(filepath, custom_objects={"Skipgram": Skipgram})
+# def AutoSkipgram(filepath):
+#    return tf.keras.models.load_model(filepath, custom_objects={"Skipgram": Skipgram})
 
 
 class Skipgram(tf.keras.Model):
@@ -54,9 +55,7 @@ class Skipgram(tf.keras.Model):
 
     @typechecked
     def __init__(
-        self,
-        dimension: int,
-        tokenizer: tf.keras.preprocessing.text.Tokenizer,
+        self, dimension: int, tokenizer: tf.keras.preprocessing.text.Tokenizer, **kwargs
     ):
         """Skigpram class constructor.
 
@@ -67,23 +66,22 @@ class Skipgram(tf.keras.Model):
                 method for instance - must be generated from this tokenizer/text encoder.
 
         Raises:
-            TypeError: if tokenizer argument isn't a tf.keras.preprocessing.text.Tokenizer instance.
+            TypeError: if tokenizer argument isn't a `tf.keras.preprocessing.text.Tokenizer` instance.
         """
-        super(Skipgram, self).__init__()
+        super(Skipgram, self).__init__(**kwargs)
         self.dimension = dimension
 
         # Tokenizer
         if isinstance(tokenizer, tf.keras.preprocessing.text.Tokenizer):
             self.tokenizer = tokenizer
-            self.vocab_size = max(tokenizer.index_word) + 1  # + 1 for padding value 0
         else:
             raise TypeError(
-                "tokenizer must be a tf.keras.preprocessing.text.Tokenizer instance."
+                "tokenizer must be a `tf.keras.preprocessing.text.Tokenizer` instance."
             )
 
         # Skigram Embedding Layer
         self.skipgram_embedding = tf.keras.layers.Embedding(
-            input_dim=self.vocab_size,
+            input_dim=max(self.tokenizer.index_word) + 1,  # + 1 for padding value 0
             output_dim=self.dimension,
             mask_zero=True,
             trainable=True,
@@ -92,7 +90,7 @@ class Skipgram(tf.keras.Model):
 
         # Context Embedding Layer
         self.context_embedding = tf.keras.layers.Embedding(
-            input_dim=self.vocab_size,
+            input_dim=max(self.tokenizer.index_word) + 1,  # + 1 for padding value 0
             output_dim=self.dimension,
             mask_zero=True,
             trainable=True,
@@ -263,7 +261,6 @@ class Skipgram(tf.keras.Model):
         n_trees: int = 100,
         n_jobs: int = -1,
         overwrite_index: bool = False,
-        index_filename: Optional[str] = None,
     ):
         """Create Annoy index for approximate vector search.
 
@@ -305,10 +302,6 @@ class Skipgram(tf.keras.Model):
         search_index.build(n_trees=n_trees, n_jobs=n_jobs)
         logger.info("Search index built.")
 
-        if index_filename:
-            search_index.save(index_filename)
-            logger.info(f"Search index saved to {index_filename}.")
-
         self.search_index = search_index
 
     def query_search_index(
@@ -335,18 +328,28 @@ class Skipgram(tf.keras.Model):
             )
 
         try:
-            i = self.tokenizer.word_index[query]
+            query_idx = self.tokenizer.word_index[query]
+            indexes, distances = self.search_index.get_nns_by_item(
+                query_idx, topn, search_k=-1, include_distances=True
+            )
             return list(
-                zip(
-                    self.search_index.get_nns_by_item(
-                        i, topn, search_k=-1, include_distances=True
-                    )
-                )
+                zip([self.tokenizer.index_word[idx] for idx in indexes], distances)
             )
         except KeyError:
-            logger.error(
-                f"{query} is an oov word. Impossible to perform vector search on oov word."
+            logger.exception(
+                f"{query} is an oov word. Impossible to perform vector search on oov words."
             )
+        except Exception as e:
+            logger.exception(e)
+
+    def save_pretrained(dirpath: Union[str, os.PathLike], save_index: bool = False):
+        # if index_filename:
+        # search_index.save(index_filename)
+        # logger.info(f"Search index saved to {index_filename}.")
+        raise NotImplementedError
+
+    def from_pretrained(dirpath):
+        raise NotImplementedError
 
     def get_config(self) -> dict:
         """Get model config for serialization.
