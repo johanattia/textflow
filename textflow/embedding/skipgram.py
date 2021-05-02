@@ -1,7 +1,7 @@
 """Skipgram for TensorFlow."""
 
 import os
-from typing import Iterable, List, Optional, Tuple, Union
+from typing import Iterable, List, Optional, Tuple, Type, Union
 from typeguard import typechecked
 
 
@@ -14,15 +14,11 @@ import tensorflow as tf
 from tensorflow_addons.utils.types import TensorLike
 
 
-from .skipgram_utils import VocabularyError
+from .utils import VocabularyError
 
 
 logger = tf.get_logger()
 logger.setLevel("INFO")
-
-
-# def AutoSkipgram(filepath):
-#    return tf.keras.models.load_model(filepath, custom_objects={"Skipgram": Skipgram})
 
 
 class Skipgram(tf.keras.Model):
@@ -327,28 +323,29 @@ class Skipgram(tf.keras.Model):
                 """
             )
 
-        try:
+        if isinstance(query, str):
             query_idx = self.tokenizer.word_index[query]
             indexes, distances = self.search_index.get_nns_by_item(
                 query_idx, topn, search_k=-1, include_distances=True
             )
-            return list(
-                zip([self.tokenizer.index_word[idx] for idx in indexes], distances)
+        elif isinstance(query, np.array):
+            indexes, distances = self.search_index.get_nns_by_vector(
+                query, topn, search_k=-1, include_distances=True
             )
-        except KeyError:
-            logger.exception(
-                f"{query} is an oov word. Impossible to perform vector search on oov words."
-            )
-        except Exception as e:
-            logger.exception(e)
 
-    def save_pretrained(dirpath: Union[str, os.PathLike], save_index: bool = False):
-        # if index_filename:
-        # search_index.save(index_filename)
-        # logger.info(f"Search index saved to {index_filename}.")
+        words = [self.tokenizer.index_word[idx] for idx in indexes]
+        return list(zip(words, distances))
+
+    def load_search_index(filepath: Union[str, os.PathLike]):
         raise NotImplementedError
 
-    def from_pretrained(dirpath):
+    def save_search_index(filepath: Union[str, os.PathLike]):
+        raise NotImplementedError
+
+    def save_pretrained(dirpath: Union[str, os.PathLike], save_index: bool = False):
+        raise NotImplementedError
+
+    def from_pretrained(dirpath: Union[str, os.PathLike]):
         raise NotImplementedError
 
     def get_config(self) -> dict:
