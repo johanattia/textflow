@@ -15,7 +15,7 @@ class VocabularyError(LookupError):
     pass
 
 
-def make_skipgram_dataset(
+def skipgram_dataset(
     texts: Iterable[str],
     window_size: int = 4,
     negative_samples: Optional[int] = 2,

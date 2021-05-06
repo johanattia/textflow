@@ -11,7 +11,7 @@ from annoy import AnnoyIndex
 
 import numpy as np
 import tensorflow as tf
-from tensorflow_addons.utils.types import TensorLike
+from tensorflow_addons.utils.types import FloatTensorLike, TensorLike
 
 
 from .utils import VocabularyError
@@ -300,14 +300,47 @@ class Skipgram(tf.keras.Model):
 
         self.search_index = search_index
 
-    def query_search_index(
-        self, query: Union[str, TensorLike], topn: int = 10
-    ) -> List[Tuple[str, float]]:
-        """Query (previously created) Annoy index. Query argument can be either
-        a word (string) or a vector.
+    def most_similar_word(self, word: str, topn: int = 10) -> List[Tuple[str, float]]:
+        """Query (previously created) Annoy index to get the `topn` most similar words of
+        `word` argument.
 
         Args:
-            query (Union[str, TensorLike]): [description]
+            word (str): [description]
+            topn (int, optional): [description]. Defaults to 10.
+
+        Raises:
+            AttributeError: [description]
+            VocabularyError: [description]
+
+        Returns:
+            List[Tuple[str, float]]: [description]
+        """
+        if not hasattr(self, "search_index"):
+            raise AttributeError(
+                """An existing `search_index` is required to use this method. Missing here.
+                To build a such vector search index, use `create_search_index` method.
+                """
+            )
+
+        try:
+            word_idx = self.tokenizer.word_index[word]
+            indexes, distances = self.search_index.get_nns_by_item(
+                word_idx, topn, search_k=-1, include_distances=True
+            )
+        except KeyError:
+            raise VocabularyError(f"{word} not in Skipgram vocabulary.")
+
+        words = [self.tokenizer.index_word[idx] for idx in indexes]
+        return list(zip(words, distances))
+
+    def query_search_index(
+        self, query: np.array, topn: int = 10
+    ) -> List[Tuple[str, float]]:
+        """Query (previously created) Annoy index to get the most similar words (vectors)
+        of `query` vector argument.
+
+        Args:
+            query (np.array): [description]
             topn (int, optional): [description]. Defaults to 10.
 
         Raises:
@@ -323,15 +356,9 @@ class Skipgram(tf.keras.Model):
                 """
             )
 
-        if isinstance(query, str):
-            query_idx = self.tokenizer.word_index[query]
-            indexes, distances = self.search_index.get_nns_by_item(
-                query_idx, topn, search_k=-1, include_distances=True
-            )
-        elif isinstance(query, np.array):
-            indexes, distances = self.search_index.get_nns_by_vector(
-                query, topn, search_k=-1, include_distances=True
-            )
+        indexes, distances = self.search_index.get_nns_by_vector(
+            query, topn, search_k=-1, include_distances=True
+        )
 
         words = [self.tokenizer.index_word[idx] for idx in indexes]
         return list(zip(words, distances))
