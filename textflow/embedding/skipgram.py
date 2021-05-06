@@ -300,7 +300,7 @@ class Skipgram(tf.keras.Model):
 
         self.search_index = search_index
 
-    def most_similar_word(self, word: str, topn: int = 10) -> List[Tuple[str, float]]:
+    def most_similar_words(self, word: str, topn: int = 10) -> List[Tuple[str, float]]:
         """Query (previously created) Annoy index to get the `topn` most similar words of
         `word` argument.
 
@@ -328,7 +328,7 @@ class Skipgram(tf.keras.Model):
                 word_idx, topn, search_k=-1, include_distances=True
             )
         except KeyError:
-            raise VocabularyError(f"{word} not in Skipgram vocabulary.")
+            logger.exception(f"{word} not in Skipgram vocabulary.")
 
         words = [self.tokenizer.index_word[idx] for idx in indexes]
         return list(zip(words, distances))
@@ -359,7 +359,6 @@ class Skipgram(tf.keras.Model):
         indexes, distances = self.search_index.get_nns_by_vector(
             query, topn, search_k=-1, include_distances=True
         )
-
         words = [self.tokenizer.index_word[idx] for idx in indexes]
         return list(zip(words, distances))
 
