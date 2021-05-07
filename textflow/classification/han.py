@@ -1,6 +1,6 @@
 """Hierarchical Attention Networks for TensorFlow."""
 
-from typing import Callable, Iterable, Union
+from typing import Dict, Iterable, Union
 from typeguard import typechecked
 
 import numpy as np
@@ -11,7 +11,7 @@ from .attention import AttentionLayer
 
 
 class HierarchicalAttentionNetwork(tf.keras.Model):
-    """Hierarchical Attention Network implementation.
+    """Hierarchical Attention Network model.
 
     Reference :
     * https://www.cs.cmu.edu/~./hovy/papers/16HLT-hierarchical-attention-networks.pdf
@@ -19,11 +19,7 @@ class HierarchicalAttentionNetwork(tf.keras.Model):
     ```python
     han_model = HierarchicalAttentionNetwork(
         vocabulary_size=max(tokenizer.index_word.keys())+1,
-        embed_dimension=128,
-        pretrained_weights=pretrained_weights,
-        gru_units=32,
-        attention_units=32,
-        classifier_units=5
+        n_classes=4
     )
     han_model.compile(
         loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True),
@@ -80,20 +76,25 @@ class HierarchicalAttentionNetwork(tf.keras.Model):
         self.SentenceAttention = AttentionLayer(units=attention_units)
         self.dense = tf.keras.layers.Dense(units=n_classes)
 
-    def call(
-        self, x: TensorLike
-    ) -> FloatTensorLike:  # [batch_size, n_sentence, n_word_idx]
+    def call(self, x: TensorLike) -> Dict[str, FloatTensorLike]:
         """Model forward method.
 
         Args:
             x (TensorLike): [description]
 
         Returns:
-            FloatTensorLike: [description]
+            Dict[str, FloatTensorLike]: [description]
         """
-        sentences_vectors, _ = self.word_to_sentence_encoder(x)
-        document_vector, _ = self.sentence_to_document_encoder(sentences_vectors)
-        return self.dense(document_vector)  # [batch_size, n_classes]
+        sentences_vectors, word_attention_weights = self.word_to_sentence_encoder(x)
+        document_vector, sentence_attention_weights = self.sentence_to_document_encoder(
+            sentences_vectors
+        )
+        output = {
+            "pred_output": self.dense(document_vector),
+            "word_attention_weights": word_attention_weights,
+            "sentence_attention_weights": sentence_attention_weights,
+        }
+        return output
 
     def word_to_sentence_encoder(self, x: TensorLike) -> FloatTensorLike:
         """Given words from each sentences, encode the contextual representation of
@@ -106,13 +107,9 @@ class HierarchicalAttentionNetwork(tf.keras.Model):
         Returns:
             FloatTensorLike: [description]
         """
-        x = self.embedding(x)  # [batch_size, n_sentence, n_word_idx, embedding_dim]
-        x = tf.keras.layers.TimeDistributed(self.WordGRU)(
-            x
-        )  # [batch_size, n_sentence, n_word_idx, embedding_dim]
-        context_vector, attention_weights = self.WordAttention(
-            x
-        )  # [batch_size, n_sentence, embedding_dim]
+        x = self.embedding(x)
+        x = tf.keras.layers.TimeDistributed(self.WordGRU)(x)
+        context_vector, attention_weights = self.WordAttention(x)
 
         return context_vector, attention_weights
 
@@ -129,14 +126,14 @@ class HierarchicalAttentionNetwork(tf.keras.Model):
         Returns:
             FloatTensorLike: [description]
         """
-        sentences_vectors = self.SentenceGRU(
-            sentences_vectors
-        )  # [batch_size, n_sentence, embedding_dim]
-        document_vector, attention_weights = self.SentenceAttention(
-            sentences_vectors
-        )  # [batch_size, projection_dim]
+        sentences_vectors = self.SentenceGRU(sentences_vectors)
+        document_vector, attention_weights = self.SentenceAttention(sentences_vectors)
 
         return document_vector, attention_weights
+
+    # def train_step(self,):
+    # def test_step(self,):
+    # def predict_step(self,):
 
     @staticmethod
     def sentences_to_tensor(
