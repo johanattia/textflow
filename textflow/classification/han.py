@@ -85,18 +85,19 @@ class HierarchicalAttentionNetwork(tf.keras.Model):
         Returns:
             Dict[str, FloatTensorLike]: [description]
         """
-        sentences_vectors, word_attention_weights = self.word_to_sentence_encoder(x)
-        document_vector, sentence_attention_weights = self.sentence_to_document_encoder(
-            sentences_vectors
+        sentences_tensor, word_attention_weights = self.sentence_encoder(x)
+        document_tensor, sentence_attention_weights = self.document_encoder(
+            sentences_tensor
         )
         output = {
-            "pred_output": self.dense(document_vector),
+            "pred_output": self.dense(document_tensor),
             "word_attention_weights": word_attention_weights,
             "sentence_attention_weights": sentence_attention_weights,
         }
+
         return output
 
-    def word_to_sentence_encoder(self, x: TensorLike) -> FloatTensorLike:
+    def sentence_encoder(self, x: TensorLike) -> FloatTensorLike:
         """Given words from each sentences, encode the contextual representation of
         the words from the sentence with Bidirectional GRU and Attention, and output
         a sentence_vector.
@@ -109,27 +110,25 @@ class HierarchicalAttentionNetwork(tf.keras.Model):
         """
         x = self.embedding(x)
         x = tf.keras.layers.TimeDistributed(self.WordGRU)(x)
-        context_vector, attention_weights = self.WordAttention(x)
+        sentences_tensor, attention_weights = self.WordAttention(x)
 
-        return context_vector, attention_weights
+        return sentences_tensor, attention_weights
 
-    def sentence_to_document_encoder(
-        self, sentences_vectors: FloatTensorLike
-    ) -> FloatTensorLike:
+    def document_encoder(self, sentences_tensor: FloatTensorLike) -> FloatTensorLike:
         """Given sentences from each review, encode the contextual representation of
         the sentences with Bidirectional GRU and Attention, and output
         a document vector.
 
         Args:
-            sentences_vectors (FloatTensorLike): [description]
+            sentences_tensor (FloatTensorLike): [description]
 
         Returns:
             FloatTensorLike: [description]
         """
-        sentences_vectors = self.SentenceGRU(sentences_vectors)
-        document_vector, attention_weights = self.SentenceAttention(sentences_vectors)
+        sentences_tensor = self.SentenceGRU(sentences_tensor)
+        document_tensor, attention_weights = self.SentenceAttention(sentences_tensor)
 
-        return document_vector, attention_weights
+        return document_tensor, attention_weights
 
     # def train_step(self,):
     # def test_step(self,):
