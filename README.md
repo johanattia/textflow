@@ -9,7 +9,7 @@ Word/Sentence Representation :
   
 Text classification :
   * [ ] [Convolutional Neural Networks for Sentence Classification](https://arxiv.org/pdf/1408.5882.pdf)
-  * [ ] [Hierarchical Attention Networks for Document Classification](https://www.cs.cmu.edu/~./hovy/papers/16HLT-hierarchical-attention-networks.pdf)
+  * [x] [Hierarchical Attention Networks for Document Classification](https://www.cs.cmu.edu/~./hovy/papers/16HLT-hierarchical-attention-networks.pdf)
   * [ ] [Quasi-Recurrent Neural Networks](https://arxiv.org/pdf/1611.01576.pdf)
   * [ ] [A Structured Self-Attentive Sentence Embedding](https://arxiv.org/pdf/1703.03130.pdf)
 
@@ -23,4 +23,4 @@ Neural Machine Translation :
 
 
 ## License
-This project is under the MIT License.
+[MIT License](LICENSE)
