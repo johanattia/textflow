@@ -122,7 +122,6 @@ class Skipgram(tf.keras.Model):
         Returns:
             tf.Tensor: skipgram embeddings of (center) word indexes in `data`.
         """
-
         data = expand_1d(data)
         x, _, _ = tf.keras.utils.unpack_x_y_sample_weight(data)
 

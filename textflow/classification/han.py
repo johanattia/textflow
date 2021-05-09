@@ -1,13 +1,105 @@
 """Hierarchical Attention Networks for TensorFlow."""
 
-from typing import Callable, Dict, Iterable, List, Union
+from typing import Callable, Dict, Iterable, List, Tuple, Union
 from typeguard import typechecked
 
-import numpy as np
 import tensorflow as tf
 from tensorflow_addons.utils.types import FloatTensorLike, TensorLike
 
-from .attention import AttentionLayer
+
+class AttentionLayer(tf.keras.layers.Layer):
+    """Attention mechanism used in "Hierarchical Attention Networks for Document
+    Classification" paper.
+
+    ```python
+    attention_layer = AttentionLayer(projection_units=64)
+    ```
+    """
+
+    @typechecked
+    def __init__(
+        self,
+        projection_units: int,
+        kernel_initializer: Union[
+            str, tf.keras.initializers.Initializer
+        ] = "glorot_uniform",
+        bias_initializer: Union[
+            str, tf.keras.initializers.Initializer
+        ] = "glorot_uniform",
+        kernel_regularizer: Union[str, tf.keras.regularizers.Regularizer] = None,
+        bias_regularizer: Union[str, tf.keras.regularizers.Regularizer] = None,
+        activity_regularizer: Union[str, tf.keras.regularizers.Regularizer] = None,
+        kernel_constraint: Union[str, tf.keras.constraints.Constraint] = None,
+        bias_constraint: Union[str, tf.keras.constraints.Constraint] = None,
+        context_initializer: Union[
+            str, tf.keras.initializers.Initializer
+        ] = "glorot_uniform",
+        context_regularizer: Union[str, tf.keras.regularizers.Regularizer] = None,
+    ):
+        """Attention layer constructor. For more details about parameters, see:
+        * https://www.tensorflow.org/api_docs/python/tf/keras/layers/Dense
+
+        Args:
+            projection_units (int): Dimensionality of the projection space, before computing
+                attention weights.
+            kernel_initializer (Union[ str, tf.keras.initializers.Initializer ], optional): Kernel
+                initializer of the projection layer. Defaults to "glorot_uniform".
+            bias_initializer (Union[str, tf.keras.initializers.Initializer], optional): Bias initializer
+                of the projection layer. Defaults to "glorot_uniform".
+            kernel_regularizer (Union[str, tf.keras.regularizers.Regularizer], optional): Kernel
+                regularizer of the projection layer. Defaults to None.
+            bias_regularizer (Union[str, tf.keras.regularizers.Regularizer], optional): Bias regularizer
+                of the projection layer. Defaults to None.
+            activity_regularizer (Union[str, tf.keras.regularizers.Regularizer], optional): Activity
+                regularizer of the projection layer. Defaults to None.
+            kernel_constraint (Union[str, tf.keras.constraints.Constraint], optional): Constraint function
+                applied to the `kernel` weights matrix of the projection layer. Defaults to None.
+            bias_constraint (Union[str, tf.keras.constraints.Constraint], optional): Constraint function
+                applied to the bias vector of the projection layer. Defaults to None.
+            context_initializer (Union[ str, tf.keras.initializers.Initializer ], optional):. Initializer of
+                the learnable context vector. Defaults to "glorot_uniform".
+            context_regularizer (Union[str, tf.keras.regularizers.Regularizer], optional): Regularizer of
+                the learnable context vector. Defaults to None.
+        """
+        super(AttentionLayer, self).__init__()
+        self.W = tf.keras.layers.Dense(
+            units=projection_units,
+            activation="tanh",
+            use_bias=True,
+            kernel_initializer=kernel_initializer,
+            bias_initializer=bias_initializer,
+            kernel_regularizer=kernel_regularizer,
+            bias_regularizer=bias_regularizer,
+            activity_regularizer=activity_regularizer,
+            kernel_constraint=kernel_constraint,
+            bias_constraint=bias_constraint,
+        )
+        self.u = tf.keras.layers.Dense(
+            units=1,
+            use_bias=False,
+            kernel_initializer=context_initializer,
+            kernel_regularizer=context_regularizer,
+        )
+
+    def call(
+        self, inputs: FloatTensorLike, mask: bool = False
+    ) -> Tuple[FloatTensorLike]:
+        """Attention forward method.
+
+        Args:
+            inputs (FloatTensorLike): [description]
+
+        Returns:
+            Tuple[FloatTensorLike]: [description]
+        """
+        attention_logits = self.u(self.W(inputs))
+        attention_weights = tf.nn.softmax(attention_logits, axis=-2)
+
+        # weighted_vectors = tf.multiply(attention_weights, inputs)
+        weighted_vectors = attention_weights * inputs
+        context_vector = tf.reduce_sum(weighted_vectors, axis=-2)
+
+        return context_vector, attention_weights
 
 
 class HierarchicalAttentionNetwork(tf.keras.Model):
@@ -105,9 +197,8 @@ class HierarchicalAttentionNetwork(tf.keras.Model):
         return NotImplemented
 
     def sentence_encoder(self, x: TensorLike) -> FloatTensorLike:
-        """Given words from each sentences, encode the contextual representation of
-        the words from the sentence with Bidirectional GRU and Attention, and output
-        a sentence_vector.
+        """Given words from each sentences, encode the contextual representation of the words from
+        the sentence with Bidirectional GRU and Attention, and output a sentence_vector.
 
         Args:
             x (TensorLike): [description]
@@ -122,9 +213,8 @@ class HierarchicalAttentionNetwork(tf.keras.Model):
         return sentences_tensor, attention_weights
 
     def document_encoder(self, sentences_tensor: FloatTensorLike) -> FloatTensorLike:
-        """Given sentences from each review, encode the contextual representation of
-        the sentences with Bidirectional GRU and Attention, and output
-        a document vector.
+        """Given sentences from each review, encode the contextual representation of the sentences with
+        Bidirectional GRU and Attention, and output a document vector.
 
         Args:
             sentences_tensor (FloatTensorLike): [description]
@@ -141,8 +231,8 @@ class HierarchicalAttentionNetwork(tf.keras.Model):
     def document_to_tensor(
         document: str, tokenizer_func: Callable[[Iterable[str], List[int]]]
     ) -> tf.RaggedTensor:
-        """Split document (str) into sentences and return ragged tensor of
-        word indexes (int) using `tokenizer_func` argument.
+        """Split document (str) into sentences and return ragged tensor of word indexes (int) using
+        `tokenizer_func` argument.
 
         Args:
             document (str): Document to tokenize.
