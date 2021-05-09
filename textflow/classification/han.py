@@ -50,7 +50,8 @@ class HierarchicalAttentionNetwork(tf.keras.Model):
             word_recurrent_units (int, optional): [description]. Defaults to 100.
             sentence_recurrent_units (int, optional): [description]. Defaults to 100.
             embed_dimension (int, optional): [description]. Defaults to 200.
-            initializer (Union[str, tf.keras.initializers.Initializer], optional): [description]. Defaults to "uniform".
+            initializer (Union[str, tf.keras.initializers.Initializer], optional): [description].
+                Defaults to "uniform".
         """
         super(HierarchicalAttentionNetwork, self).__init__(**kwargs)
 
@@ -135,17 +136,28 @@ class HierarchicalAttentionNetwork(tf.keras.Model):
     # def predict_step(self,):
 
     @staticmethod
-    def sentences_to_tensor(
-        sentences: Iterable[str], tokenizer: tf.keras.preprocessing.text.Tokenizer
+    def document_to_tensor(
+        document: str, tokenizer: tf.keras.preprocessing.text.Tokenizer
     ) -> tf.RaggedTensor:
-        """[summary]
+        """Split document (str) into sentences and return ragged tensor of
+        word indexes (int) using `tokenizer` argument.
 
         Args:
-            sentences (Iterable[str]): [description]
-            tokenizer (tf.keras.preprocessing.text.Tokenizer): [description]
+            document (str): Document to tokenize.
+            tokenizer (tf.keras.preprocessing.text.Tokenizer): tokenizer instance.
 
         Returns:
-            tf.RaggedTensor: [description]
+            tf.RaggedTensor: ragged tensor of  shape (n_sentences, None). None means
+                variable sentence length.
         """
+        try:
+            from nltk.tokenize import sent_tokenize
+
+        except ImportError:
+            raise ImportError(
+                "Please install nltk. For details, see: https://www.nltk.org/install.html"
+            )
+
+        sentences = sent_tokenize(document)
         sequences = tokenizer.texts_to_sequences(sentences)
         return tf.ragged.constant(sequences)
