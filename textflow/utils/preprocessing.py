@@ -1,4 +1,4 @@
-"Utilities for Skigpram."
+"Some preprocessing functions."
 
 from typing import Iterable, Optional, Tuple
 
@@ -8,14 +8,10 @@ import tensorflow as tf
 from tqdm.auto import tqdm
 
 
-# TODO: make_skipgram_dataset
+# TODO: prepare_skipgram
 
 
-class VocabularyError(LookupError):
-    pass
-
-
-def skipgram_dataset(
+def prepare_skipgram(
     texts: Iterable[str],
     window_size: int = 4,
     negative_samples: Optional[int] = 2,

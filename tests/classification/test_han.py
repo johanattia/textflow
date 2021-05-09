@@ -1,8 +1,8 @@
 """Test for Attention layer."""
 
 import tensorflow as tf
-from .attention import AttentionLayer
-from .han import HierarchicalAttentionNetwork
+from textflow.classification.attention import AttentionLayer
+from textflow.classification.han import HierarchicalAttentionNetwork
 
 
 def test_attention():

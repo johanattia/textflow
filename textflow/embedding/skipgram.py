@@ -1,20 +1,16 @@
 """Skipgram for TensorFlow."""
 
 import os
-from typing import Iterable, List, Optional, Tuple, Type, Union
+from typing import Iterable, List, Tuple, Union
 from typeguard import typechecked
-
-
-from tqdm.auto import tqdm
-from annoy import AnnoyIndex
 
 
 import numpy as np
 import tensorflow as tf
-from tensorflow_addons.utils.types import FloatTensorLike, TensorLike
+from tensorflow_addons.utils.types import TensorLike
 
 
-from .utils import VocabularyError
+from ..utils.utils import expand_1d, VocabularyError
 
 
 logger = tf.get_logger()
@@ -127,16 +123,7 @@ class Skipgram(tf.keras.Model):
             tf.Tensor: skipgram embeddings of (center) word indexes in `data`.
         """
 
-        def _expand_single_1d_tensor(tensor):
-            if (
-                isinstance(tensor, tf.Tensor)
-                and isinstance(tensor.shape, tf.TensorShape)
-                and tensor.shape.rank == 1
-            ):
-                return tf.expand_dims(tensor, axis=-1)
-            return tensor
-
-        data = tf.nest.map_structure(_expand_single_1d_tensor, data)
+        data = expand_1d(data)
         x, _, _ = tf.keras.utils.unpack_x_y_sample_weight(data)
 
         return self.skipgram_embedding(x)
@@ -284,6 +271,18 @@ class Skipgram(tf.keras.Model):
                 """
             )
 
+        try:
+            from annoy import AnnoyIndex
+            from tqdm.auto import tqdm
+
+        except ImportError:
+            raise ImportError(
+                """Please install annoy and tqdm, at least one of both is missing. For details, see: 
+                * https://github.com/spotify/annoy
+                * https://github.com/tqdm/tqdm
+                """
+            )
+
         search_index = AnnoyIndex(self.dimension, metric=metric)
         logger.info("Search index instantiated. Start indexing.")
 
@@ -330,8 +329,7 @@ class Skipgram(tf.keras.Model):
         except KeyError:
             logger.exception(f"{word} not in Skipgram vocabulary.")
 
-        words = [self.tokenizer.index_word[idx] for idx in indexes]
-        return list(zip(words, distances))
+        return list(zip([self.tokenizer.index_word[idx] for idx in indexes], distances))
 
     def query_search_index(
         self, query: np.array, topn: int = 10
@@ -359,8 +357,8 @@ class Skipgram(tf.keras.Model):
         indexes, distances = self.search_index.get_nns_by_vector(
             query, topn, search_k=-1, include_distances=True
         )
-        words = [self.tokenizer.index_word[idx] for idx in indexes]
-        return list(zip(words, distances))
+
+        return list(zip([self.tokenizer.index_word[idx] for idx in indexes], distances))
 
     def load_search_index(filepath: Union[str, os.PathLike]):
         raise NotImplementedError
@@ -386,6 +384,7 @@ class Skipgram(tf.keras.Model):
             "dimension": self.dimension,
             "tokenizer": tokenizer_json,
         }
+
         return config
 
     @classmethod
@@ -401,4 +400,5 @@ class Skipgram(tf.keras.Model):
         config["tokenizer"] = tf.keras.preprocessing.text.tokenizer_from_json(
             config["tokenizer"]
         )
+
         return cls(**config)

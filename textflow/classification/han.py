@@ -98,6 +98,12 @@ class HierarchicalAttentionNetwork(tf.keras.Model):
 
         return output
 
+    def train_step(self, data: Iterable[TensorLike]) -> Dict[str, FloatTensorLike]:
+        return NotImplemented
+
+    def test_step(self, data: Iterable[TensorLike]) -> Dict[str, FloatTensorLike]:
+        return NotImplemented
+
     def sentence_encoder(self, x: TensorLike) -> FloatTensorLike:
         """Given words from each sentences, encode the contextual representation of
         the words from the sentence with Bidirectional GRU and Attention, and output
@@ -131,16 +137,12 @@ class HierarchicalAttentionNetwork(tf.keras.Model):
 
         return document_tensor, attention_weights
 
-    # def train_step(self,):
-    # def test_step(self,):
-    # def predict_step(self,):
-
     @staticmethod
     def document_to_tensor(
         document: str, tokenizer_func: Callable[[Iterable[str], List[int]]]
     ) -> tf.RaggedTensor:
         """Split document (str) into sentences and return ragged tensor of
-        word indexes (int) using `tokenizer` argument.
+        word indexes (int) using `tokenizer_func` argument.
 
         Args:
             document (str): Document to tokenize.
@@ -153,6 +155,7 @@ class HierarchicalAttentionNetwork(tf.keras.Model):
         """
         try:
             from nltk.tokenize import sent_tokenize
+
         except ImportError:
             raise ImportError(
                 "Please install nltk. For details, see: https://www.nltk.org/install.html"

@@ -1,9 +1,6 @@
 """Abstact class TranslatorNetwork."""
 
 import tensorflow as tf
-from tensorflow_addons.utils.types import FloatTensorLike
-
-from typeguard import typechecked
 
 
 class TranslatorNetwork(tf.keras.Model):
