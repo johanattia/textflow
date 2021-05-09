@@ -1,6 +1,6 @@
 """Hierarchical Attention Networks for TensorFlow."""
 
-from typing import Dict, Iterable, Union
+from typing import Callable, Dict, Iterable, List, Union
 from typeguard import typechecked
 
 import numpy as np
@@ -137,27 +137,28 @@ class HierarchicalAttentionNetwork(tf.keras.Model):
 
     @staticmethod
     def document_to_tensor(
-        document: str, tokenizer: tf.keras.preprocessing.text.Tokenizer
+        document: str, tokenizer_func: Callable[[Iterable[str], List[int]]]
     ) -> tf.RaggedTensor:
         """Split document (str) into sentences and return ragged tensor of
         word indexes (int) using `tokenizer` argument.
 
         Args:
             document (str): Document to tokenize.
-            tokenizer (tf.keras.preprocessing.text.Tokenizer): tokenizer instance.
+            tokenizer (Callable[[Iterable[str], List[int]]]: tokenizer function. It has to
+                map words (str) into word indexes (int).
 
         Returns:
-            tf.RaggedTensor: ragged tensor of  shape (n_sentences, None). None means
+            tf.RaggedTensor: ragged tensor of  shape (n_sentences, None). `None` stands
                 variable sentence length.
         """
         try:
             from nltk.tokenize import sent_tokenize
-
         except ImportError:
             raise ImportError(
                 "Please install nltk. For details, see: https://www.nltk.org/install.html"
             )
 
         sentences = sent_tokenize(document)
-        sequences = tokenizer.texts_to_sequences(sentences)
+        sequences = tokenizer_func(sentences)
+
         return tf.ragged.constant(sequences)
