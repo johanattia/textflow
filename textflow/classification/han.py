@@ -42,19 +42,6 @@ class AttentionLayer(tf.keras.layers.Layer):
             learnable context vector. Defaults to "glorot_uniform".
         context_regularizer (Union[str, Callable], optional): Regularizer of the
             learnable context vector. Defaults to None.
-
-    Call Args:
-        inputs (FloatTensorLike): Sequence of vectors.
-        training (bool, optional): Whether the layer should behave in training
-            mode or in inference mode for the dropout layer. Defaults to False.
-        mask (bool, optional): Binary (padding) mask of the input sequence. Used
-            for attention scores calculation. Defaults to None.
-        return_attention_scores (bool, optional): Whether return attention scores.
-            Defaults to True.
-
-    Returns:
-        context_vector (FloatTensorLike): [description].
-        attention_scores (FloatTensorLike): [description].
     """
 
     @typechecked
@@ -120,7 +107,23 @@ class AttentionLayer(tf.keras.layers.Layer):
         mask: TensorLike = None,
         return_attention_scores: bool = True,
     ) -> Tuple[FloatTensorLike]:
+        """
+        Args:
+            inputs (FloatTensorLike): Sequence of vectors. May be either a tf.Tensor
+                of shape (batch_size, seq_size, input_dim), or a tf.RaggedTensor
+                of shape (batch_size, None, input_dim).
+            training (bool, optional): Whether the layer should behave in training
+                mode or in inference mode for the dropout layer. Defaults to False.
+            mask (bool, optional): Binary (padding) mask of the input sequence.
+                Used for attention scores calculation. To use only if `inputs`
+                tensor is a tf.Tensor. Defaults to None.
+            return_attention_scores (bool, optional): Whether return attention
+                scores. Defaults to True.
 
+        Returns:
+            context_vector (FloatTensorLike): [description].
+            attention_scores (FloatTensorLike): [description].
+        """
         attention_logits = self.u(self.W(inputs))
         attention_scores = tf.nn.softmax(attention_logits, axis=-2)
 
