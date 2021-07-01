@@ -1,10 +1,15 @@
 """Hierarchical Attention Networks for TensorFlow."""
 
+
 from typing import Callable, Dict, Iterable, List, Tuple, Union
 from typeguard import typechecked
 
 import tensorflow as tf
 from tensorflow_addons.utils.types import FloatTensorLike, TensorLike
+
+
+# TODO:
+# AttentionLayer: call method
 
 
 class AttentionLayer(tf.keras.layers.Layer):
@@ -14,92 +19,156 @@ class AttentionLayer(tf.keras.layers.Layer):
     ```python
     attention_layer = AttentionLayer(projection_units=64)
     ```
+
+    Args:
+        projection_units (int): Dimensionality of the projection space, before
+            computing attention weights.
+        kernel_initializer (Union[str, Callable], optional): Kernel initializer
+            of the projection layer. Defaults to "glorot_uniform".
+        kernel_regularizer (Union[str, Callable], optional): Kernel regularizer
+            of the projection layer. Defaults to None.
+        kernel_constraint (Union[str, Callable], optional): Constraint function
+            applied to the `kernel` weights matrix of the projection layer.
+            Defaults to None.
+        bias_initializer (Union[str, Callable], optional): Bias initializer of
+            the projection layer. Defaults to "zeros".
+        bias_regularizer (Union[str, Callable], optional): Bias regularizer of
+            the projection layer. Defaults to None.
+        bias_constraint (Union[str, Callable], optional): Constraint function
+            applied to the bias vector of the projection layer. Defaults to None.
+        activity_regularizer (Union[str, Callable], optional): Activity regularizer
+            of the projection layer. Defaults to None.
+        context_initializer (Union[str, Callable], optional): Initializer of the
+            learnable context vector. Defaults to "glorot_uniform".
+        context_regularizer (Union[str, Callable], optional): Regularizer of the
+            learnable context vector. Defaults to None.
+
+    Call Args:
+        inputs (FloatTensorLike): Sequence of vectors.
+        training (bool, optional): Whether the layer should behave in training
+            mode or in inference mode for the dropout layer. Defaults to False.
+        mask (bool, optional): Binary (padding) mask of the input sequence. Used
+            for attention scores calculation. Defaults to None.
+        return_attention_scores (bool, optional): Whether return attention scores.
+            Defaults to True.
+
+    Returns:
+        context_vector (FloatTensorLike): [description].
+        attention_scores (FloatTensorLike): [description].
     """
 
     @typechecked
     def __init__(
         self,
         projection_units: int,
-        kernel_initializer: Union[
-            str, tf.keras.initializers.Initializer
-        ] = "glorot_uniform",
-        bias_initializer: Union[
-            str, tf.keras.initializers.Initializer
-        ] = "glorot_uniform",
-        kernel_regularizer: Union[str, tf.keras.regularizers.Regularizer] = None,
-        bias_regularizer: Union[str, tf.keras.regularizers.Regularizer] = None,
-        activity_regularizer: Union[str, tf.keras.regularizers.Regularizer] = None,
-        kernel_constraint: Union[str, tf.keras.constraints.Constraint] = None,
-        bias_constraint: Union[str, tf.keras.constraints.Constraint] = None,
-        context_initializer: Union[
-            str, tf.keras.initializers.Initializer
-        ] = "glorot_uniform",
-        context_regularizer: Union[str, tf.keras.regularizers.Regularizer] = None,
+        dropout: float,
+        kernel_initializer: Union[str, Callable] = "glorot_uniform",
+        kernel_regularizer: Union[str, Callable] = None,
+        kernel_constraint: Union[str, Callable] = None,
+        bias_initializer: Union[str, Callable] = "zeros",
+        bias_regularizer: Union[str, Callable] = None,
+        bias_constraint: Union[str, Callable] = None,
+        activity_regularizer: Union[str, Callable] = None,
+        context_initializer: Union[str, Callable] = "glorot_uniform",
+        context_regularizer: Union[str, Callable] = None,
+        **kwargs,
     ):
-        """Attention layer constructor. For more details about parameters, see:
-        * https://www.tensorflow.org/api_docs/python/tf/keras/layers/Dense
+        super(AttentionLayer, self).__init__(**kwargs)
 
-        Args:
-            projection_units (int): Dimensionality of the projection space, before computing
-                attention weights.
-            kernel_initializer (Union[ str, tf.keras.initializers.Initializer ], optional): Kernel
-                initializer of the projection layer. Defaults to "glorot_uniform".
-            bias_initializer (Union[str, tf.keras.initializers.Initializer], optional): Bias initializer
-                of the projection layer. Defaults to "glorot_uniform".
-            kernel_regularizer (Union[str, tf.keras.regularizers.Regularizer], optional): Kernel
-                regularizer of the projection layer. Defaults to None.
-            bias_regularizer (Union[str, tf.keras.regularizers.Regularizer], optional): Bias regularizer
-                of the projection layer. Defaults to None.
-            activity_regularizer (Union[str, tf.keras.regularizers.Regularizer], optional): Activity
-                regularizer of the projection layer. Defaults to None.
-            kernel_constraint (Union[str, tf.keras.constraints.Constraint], optional): Constraint function
-                applied to the `kernel` weights matrix of the projection layer. Defaults to None.
-            bias_constraint (Union[str, tf.keras.constraints.Constraint], optional): Constraint function
-                applied to the bias vector of the projection layer. Defaults to None.
-            context_initializer (Union[ str, tf.keras.initializers.Initializer ], optional):. Initializer of
-                the learnable context vector. Defaults to "glorot_uniform".
-            context_regularizer (Union[str, tf.keras.regularizers.Regularizer], optional): Regularizer of
-                the learnable context vector. Defaults to None.
-        """
-        super(AttentionLayer, self).__init__()
+        # ATTRIBUTES PARAMETERS
+        self._projection_units = projection_units
+        self._dropout = dropout
+
+        self._kernel_initializer = tf.keras.initializers.get(kernel_initializer)
+        self._kernel_regularizer = tf.keras.regularizers.get(kernel_regularizer)
+        self._kernel_constraint = tf.keras.constraints.get(kernel_constraint)
+
+        self._bias_initializer = tf.keras.initializers.get(bias_initializer)
+        self._bias_regularizer = tf.keras.regularizers.get(bias_regularizer)
+        self._bias_constraint = tf.keras.constraints.get(bias_constraint)
+
+        self._activity_regularizer = tf.keras.regularizers.get(activity_regularizer)
+
+        self._context_initializer = tf.keras.initializers.get(context_initializer)
+        self._context_regularizer = tf.keras.regularizers.get(context_regularizer)
+
+        # LAYERS
         self.W = tf.keras.layers.Dense(
-            units=projection_units,
+            units=self._projection_units,
             activation="tanh",
             use_bias=True,
-            kernel_initializer=kernel_initializer,
-            bias_initializer=bias_initializer,
-            kernel_regularizer=kernel_regularizer,
-            bias_regularizer=bias_regularizer,
-            activity_regularizer=activity_regularizer,
-            kernel_constraint=kernel_constraint,
-            bias_constraint=bias_constraint,
+            kernel_initializer=self._kernel_initializer,
+            bias_initializer=self._bias_initializer,
+            kernel_regularizer=self._kernel_regularizer,
+            bias_regularizer=self._bias_regularizer,
+            activity_regularizer=self._activity_regularizer,
+            kernel_constraint=self._kernel_constraint,
+            bias_constraint=self._bias_constraint,
         )
         self.u = tf.keras.layers.Dense(
             units=1,
             use_bias=False,
-            kernel_initializer=context_initializer,
-            kernel_regularizer=context_regularizer,
+            kernel_initializer=self._context_initializer,
+            kernel_regularizer=self._context_regularizer,
         )
+        self.dropout = tf.keras.layers.Dropout(self._dropout)
 
     def call(
-        self, inputs: FloatTensorLike, mask: bool = False
+        self,
+        inputs: FloatTensorLike,
+        training: bool = False,
+        mask: TensorLike = None,
+        return_attention_scores: bool = True,
     ) -> Tuple[FloatTensorLike]:
-        """Attention forward method.
 
-        Args:
-            inputs (FloatTensorLike): [description]
-
-        Returns:
-            Tuple[FloatTensorLike]: [description]
-        """
         attention_logits = self.u(self.W(inputs))
-        attention_weights = tf.nn.softmax(attention_logits, axis=-2)
+        attention_scores = tf.nn.softmax(attention_logits, axis=-2)
 
         # weighted_vectors = tf.multiply(attention_weights, inputs)
-        weighted_vectors = attention_weights * inputs
+        weighted_vectors = attention_scores * inputs
         context_vector = tf.reduce_sum(weighted_vectors, axis=-2)
 
-        return context_vector, attention_weights
+        if return_attention_scores:
+            return context_vector, attention_scores
+
+        return context_vector
+
+    def get_config(self):
+        config = super(AttentionLayer, self).get_config()
+        config.update(
+            {
+                "projection_units": self._projection_units,
+                "dropout": self._dropout,
+                "kernel_initializer": tf.keras.initializers.serialize(
+                    self._kernel_initializer
+                ),
+                "kernel_regularizer": tf.keras.regularizers.serialize(
+                    self._kernel_regularizer
+                ),
+                "kernel_constraint": tf.keras.constraints.serialize(
+                    self._kernel_constraint
+                ),
+                "bias_initializer": tf.keras.initializers.serialize(
+                    self._bias_initializer
+                ),
+                "bias_regularizer": tf.keras.regularizers.serialize(
+                    self._bias_regularizer
+                ),
+                "bias_constraint": tf.keras.constraints.serialize(
+                    self._bias_constraint
+                ),
+                "activity_regularizer": tf.keras.regularizers.serialize(
+                    self._activity_regularizer
+                ),
+                "context_initializer": tf.keras.initializers.serialize(
+                    self._context_initializer
+                ),
+                "context_regularizer": tf.keras.regularizers.serialize(
+                    self._context_regularizer
+                ),
+            }
+        )
+        return config
 
 
 class HierarchicalAttentionNetwork(tf.keras.Model):
@@ -119,6 +188,22 @@ class HierarchicalAttentionNetwork(tf.keras.Model):
         metrics=["accuracy"]
     )
     ```
+
+    Args:
+        vocabulary_size (int): [description]
+        n_classes (int): [description]
+        attention_units (int, optional): [description]. Defaults to 100.
+        word_recurrent_units (int, optional): [description]. Defaults to 100.
+        sentence_recurrent_units (int, optional): [description]. Defaults to 100.
+        embed_dimension (int, optional): [description]. Defaults to 200.
+        initializer (Union[str, Callable], optional): [description].
+            Defaults to "uniform".
+
+    Call Args:
+        x (TensorLike): [description]
+
+    Returns:
+        Dict[str, FloatTensorLike]: [description]
     """
 
     @typechecked
@@ -130,21 +215,9 @@ class HierarchicalAttentionNetwork(tf.keras.Model):
         word_recurrent_units: int = 100,
         sentence_recurrent_units: int = 100,
         embed_dimension: int = 200,
-        initializer: Union[str, tf.keras.initializers.Initializer] = "uniform",
-        **kwargs
+        initializer: Union[str, Callable] = "uniform",
+        **kwargs,
     ):
-        """Hierarchical Attention Network class constructor.
-
-        Args:
-            vocabulary_size (int): [description]
-            n_classes (int): [description]
-            attention_units (int, optional): [description]. Defaults to 100.
-            word_recurrent_units (int, optional): [description]. Defaults to 100.
-            sentence_recurrent_units (int, optional): [description]. Defaults to 100.
-            embed_dimension (int, optional): [description]. Defaults to 200.
-            initializer (Union[str, tf.keras.initializers.Initializer], optional): [description].
-                Defaults to "uniform".
-        """
         super(HierarchicalAttentionNetwork, self).__init__(**kwargs)
 
         self.embedding = tf.keras.layers.Embedding(
@@ -170,14 +243,7 @@ class HierarchicalAttentionNetwork(tf.keras.Model):
         self.dense = tf.keras.layers.Dense(units=n_classes)
 
     def call(self, x: TensorLike) -> Dict[str, FloatTensorLike]:
-        """Model forward method.
 
-        Args:
-            x (TensorLike): [description]
-
-        Returns:
-            Dict[str, FloatTensorLike]: [description]
-        """
         sentences_tensor, word_attention_weights = self.sentence_encoder(x)
         document_tensor, sentence_attention_weights = self.document_encoder(
             sentences_tensor
